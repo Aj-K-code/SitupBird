@@ -14,14 +14,14 @@
   - Include Press Start 2P font and animated title elements
   - _Requirements: 1.1, 7.1, 7.2, 8.1, 8.4_
 
-- [ ] 3. Implement WebSocket client communication
+- [x] 3. Implement WebSocket client communication
   - Create WebSocket client classes for game and controller modes
   - Add connection handling, message parsing, and error management
   - Implement room creation and joining with proper error feedback
   - Add connection status display and reconnection logic
   - _Requirements: 1.2, 1.4, 2.3, 2.4, 6.1, 6.3, 6.4_
 
-- [ ] 4. Build motion sensor calibration system
+- [x] 4. Build motion sensor calibration system
   - Create calibration UI with instructions and progress feedback
   - Implement Generic Sensor API integration with permission handling
   - Add calibration data recording (min/max Z-axis values)
