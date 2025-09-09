@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Situp Bird</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Selection Screen -->
+    <div id="selection-screen" class="screen active">
+        <div class="container">
+            <div class="title-container">
+                <h1 class="game-title animated-title">SITUP BIRD</h1>
+                <div class="subtitle">Motion-Controlled Fitness Gaming</div>
+            </div>
+            
+            <div class="button-container">
+                <button id="start-game-btn" class="game-button primary">
+                    START GAME
+                </button>
+                <button id="use-controller-btn" class="game-button secondary">
+                    USE AS CONTROLLER
+                </button>
+            </div>
+            
+            <div class="instructions">
+                <p>Connect two devices to play!</p>
+                <p>One device shows the game, the other controls it with motion.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen">
+        <div class="game-container">
+            <div class="game-header">
+                <div class="room-code-display">
+                    <span class="label">ROOM CODE:</span>
+                    <span id="room-code" class="code">----</span>
+                </div>
+                <div class="connection-status">
+                    <span id="connection-status">CONNECTING...</span>
+                </div>
+                <div class="score-display">
+                    <span class="label">SCORE:</span>
+                    <span id="score">0</span>
+                </div>
+            </div>
+            
+            <canvas id="game-canvas" width="800" height="600"></canvas>
+            
+            <div class="game-footer">
+                <button id="back-to-menu-btn" class="game-button small">BACK TO MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controller Screen -->
+    <div id="controller-screen" class="screen">
+        <div class="container">
+            <div class="controller-header">
+                <h2 class="screen-title">CONTROLLER</h2>
+                <div class="connection-indicator">
+                    <div id="controller-status" class="status">DISCONNECTED</div>
+                </div>
+            </div>
+            
+            <div class="code-input-section">
+                <label for="room-code-input" class="input-label">ENTER ROOM CODE:</label>
+                <input type="text" id="room-code-input" class="code-input" maxlength="4" placeholder="1234">
+                <button id="join-room-btn" class="game-button primary">JOIN ROOM</button>
+            </div>
+            
+            <div class="sensor-section">
+                <div class="sensor-status">
+                    <div class="sensor-indicator">
+                        <div id="sensor-status" class="status">SENSOR READY</div>
+                    </div>
+                </div>
+                
+                <div class="motion-display">
+                    <div class="motion-indicator">
+                        <div id="motion-bar" class="motion-bar">
+                            <div id="motion-fill" class="motion-fill"></div>
+                        </div>
+                        <div class="motion-labels">
+                            <span>DOWN</span>
+                            <span>UP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controller-instructions">
+                <p>Hold your phone and perform situp motions to control the bird!</p>
+            </div>
+            
+            <div class="controller-footer">
+                <button id="controller-back-btn" class="game-button small">BACK TO MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="overlay hidden">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">LOADING...</div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="error-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>ERROR</h3>
+            </div>
+            <div class="modal-body">
+                <p id="error-message">An error occurred.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="error-ok-btn" class="game-button primary">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
