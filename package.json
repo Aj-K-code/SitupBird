@@ -1,0 +1,19 @@
+{
+  "name": "situp-bird-signaling-server",
+  "version": "1.0.0",
+  "description": "WebSocket signaling server for Situp Bird game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": ["websocket", "signaling", "game", "fitness"],
+  "author": "",
+  "license": "MIT"
+}
