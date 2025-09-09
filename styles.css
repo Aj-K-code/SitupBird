@@ -12,6 +12,31 @@ body {
   line-height: 1.4;
   min-height: 100vh;
   overflow: hidden;
+  
+  /* Enhanced touch support */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  
+  /* Prevent zoom on double tap */
+  touch-action: manipulation;
+  
+  /* Smooth scrolling for better UX */
+  scroll-behavior: smooth;
+}
+
+/* Allow text selection for inputs and debug info */
+.code-input,
+.adjustment-slider,
+#debug-messages,
+.modal-body {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 /* Dark retro color scheme */
@@ -143,7 +168,7 @@ body {
   margin: 0 auto;
 }
 
-/* Retro Gaming Button Styles */
+/* Enhanced Cross-Platform Button Styles */
 .game-button {
   font-family: 'Press Start 2P', cursive;
   font-size: 0.8rem;
@@ -154,7 +179,56 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
   position: relative;
-  min-height: 44px; /* Touch-friendly size */
+  min-height: 48px; /* Enhanced touch-friendly size */
+  min-width: 120px; /* Minimum width for touch targets */
+  
+  /* Enhanced touch support */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  
+  /* Accessibility improvements */
+  outline: none;
+  
+  /* Prevent text selection */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Focus styles for keyboard navigation */
+.game-button:focus {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Enhanced hover/active states for different input methods */
+.game-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.game-button:active {
+  transform: scale(0.95) translateY(1px);
+  transition: transform 0.1s ease;
+}
+
+/* Disabled state */
+.game-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Touch device specific styles */
+@media (hover: none) and (pointer: coarse) {
+  .game-button:hover {
+    transform: none; /* Disable hover effects on touch devices */
+  }
+  
+  .game-button:active {
+    transform: scale(0.95);
+    background-color: var(--btn-primary-hover);
+  }
 }
 
 .game-button.primary {
@@ -253,6 +327,49 @@ body {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
   max-width: calc(100% - 40px);
   max-height: 60vh;
+  
+  /* Enhanced responsive scaling */
+  width: 100%;
+  height: auto;
+  
+  /* Maintain aspect ratio */
+  aspect-ratio: 4/3;
+  
+  /* Smooth scaling */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  
+  /* Touch interaction */
+  touch-action: none;
+  
+  /* Performance optimization */
+  will-change: transform;
+}
+
+/* Canvas container for better control */
+.canvas-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Responsive canvas sizing */
+@media (max-width: 768px) {
+  #game-canvas {
+    max-height: 50vh;
+    border-width: 2px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  #game-canvas {
+    max-height: 40vh;
+    max-width: calc(100% - 20px);
+  }
 }
 
 .game-footer {
@@ -317,11 +434,38 @@ body {
   border-color: var(--border-pixel);
   margin-bottom: 20px;
   letter-spacing: 5px;
+  
+  /* Enhanced mobile support */
+  min-height: 48px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  
+  /* Touch and accessibility improvements */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  
+  /* Input mode for mobile keyboards */
+  inputmode: numeric;
+  pattern: "[0-9]*";
 }
 
 .code-input:focus {
-  outline: none;
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
   box-shadow: 0 0 10px var(--accent-green);
+}
+
+/* iOS specific fixes */
+.code-input::-webkit-outer-spin-button,
+.code-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox specific fixes */
+.code-input[type=number] {
+  -moz-appearance: textfield;
 }
 
 .sensor-section {
@@ -457,6 +601,43 @@ body {
   font-size: 0.7rem;
   color: var(--text-primary);
   line-height: 1.6;
+}
+
+/* Success Notification */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1002;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+}
+
+.notification:not(.hidden) {
+  transform: translateX(0);
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  background-color: var(--status-connected);
+  color: var(--bg-dark);
+  padding: 15px 20px;
+  border: 2px solid var(--border-pixel);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+  animation: success-pulse 0.6s ease-out;
+}
+
+.notification-icon {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-right: 10px;
+}
+
+.notification-message {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 0.7rem;
+  font-weight: bold;
 }
 
 /* Calibration Screen */
@@ -707,8 +888,108 @@ body {
   margin-bottom: 5px;
 }
 
-/* Responsive Design */
-@media (min-width: 768px) {
+/* Enhanced Cross-Platform Responsive Design */
+
+/* Mobile-first approach with touch-friendly sizing */
+@media (max-width: 480px) {
+  .game-title {
+    font-size: 2rem;
+  }
+  
+  .game-button {
+    font-size: 0.7rem;
+    padding: 16px 20px;
+    min-height: 48px; /* Increased for better touch targets */
+  }
+  
+  .code-input {
+    font-size: 1.2rem;
+    width: 140px;
+    padding: 16px;
+    min-height: 48px;
+  }
+  
+  .game-header {
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .calibration-info {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  .sensor-readings {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .adjustment-controls {
+    gap: 15px;
+  }
+  
+  .modal-content {
+    margin: 10px;
+    padding: 15px;
+  }
+  
+  .notification {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 360px) {
+  .game-title {
+    font-size: 1.8rem;
+  }
+  
+  .game-button {
+    font-size: 0.6rem;
+    padding: 14px 18px;
+  }
+  
+  .code-input {
+    font-size: 1rem;
+    width: 120px;
+    padding: 14px;
+  }
+  
+  .instructions {
+    font-size: 0.5rem;
+  }
+}
+
+/* Tablet portrait */
+@media (min-width: 481px) and (max-width: 768px) {
+  .game-title {
+    font-size: 2.5rem;
+  }
+  
+  .game-button {
+    font-size: 0.8rem;
+    padding: 17px 22px;
+  }
+  
+  .code-input {
+    font-size: 1.5rem;
+    width: 160px;
+    padding: 18px;
+  }
+  
+  .sensor-readings {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+}
+
+/* Tablet landscape and small desktop */
+@media (min-width: 769px) and (max-width: 1024px) {
   .game-title {
     font-size: 3rem;
   }
@@ -743,9 +1024,15 @@ body {
   .status {
     font-size: 0.7rem;
   }
+  
+  .game-header {
+    flex-direction: row;
+    justify-content: space-between;
+  }
 }
 
-@media (min-width: 1024px) {
+/* Desktop and large screens */
+@media (min-width: 1025px) {
   .game-title {
     font-size: 3.5rem;
   }
@@ -761,6 +1048,132 @@ body {
   .sensor-section {
     max-width: 450px;
   }
+  
+  .game-canvas {
+    max-width: 800px;
+    max-height: 600px;
+  }
+}
+
+/* Ultra-wide screens */
+@media (min-width: 1440px) {
+  .game-title {
+    font-size: 4rem;
+  }
+  
+  .container, .game-container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
+
+/* Landscape orientation optimizations */
+@media (orientation: landscape) and (max-height: 600px) {
+  .container {
+    padding: 10px;
+  }
+  
+  .game-title {
+    font-size: 1.8rem;
+    margin-bottom: 15px;
+  }
+  
+  .button-container {
+    gap: 15px;
+  }
+  
+  .calibration-content {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  
+  .instructions {
+    margin-top: 20px;
+  }
+  
+  .game-header {
+    padding: 10px 15px;
+    margin-bottom: 10px;
+  }
+  
+  .game-canvas {
+    max-height: 50vh;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .game-button, .code-input, .motion-bar {
+    border-width: 2px; /* Thinner borders on high DPI */
+  }
+  
+  .position-indicator {
+    border-width: 1px;
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .animated-title {
+    animation: none;
+  }
+  
+  .loading-spinner {
+    animation: none;
+  }
+  
+  .position-indicator {
+    transition: none;
+  }
+  
+  .motion-fill {
+    transition: none;
+  }
+  
+  .game-button:hover {
+    transform: none;
+    animation: none;
+  }
+  
+  .status.connecting,
+  .status.waiting,
+  .status.ready,
+  .status.reconnecting {
+    animation: none;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-dark: #f0f0f8;
+    --bg-darker: #e8e8f0;
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a4a6a;
+    --border-pixel: #2a2a4a;
+  }
+  
+  body {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+  }
+}
+
+/* Print styles (hide interactive elements) */
+@media print {
+  .game-button,
+  .code-input,
+  .loading-overlay,
+  .modal,
+  .notification {
+    display: none !important;
+  }
+  
+  .screen {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+  }
 }
 
 /* Hover/focus states with color transitions */
@@ -772,12 +1185,482 @@ body {
   transition: box-shadow 0.3s ease;
 }
 
-/* Motion bar fill animation */
+/* Enhanced motion bar animations */
 .motion-fill {
-  transition: width 0.1s ease;
+  transition: width 0.1s ease, background 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* Smooth transitions between screens */
 .screen {
   transition: opacity 0.5s ease;
+}
+
+/* Enhanced status indicator animations */
+.status {
+  transition: all 0.3s ease;
+}
+
+/* Position indicator enhanced animations */
+.position-indicator {
+  transition: left 0.2s ease, background-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+/* Enhanced button hover effects */
+.game-button:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-glow), 4px 8px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Loading spinner enhancement */
+.loading-spinner {
+  box-shadow: 0 0 20px var(--accent-cyan);
+}
+
+/* Calibration range bar enhancements */
+.range-bar {
+  transition: border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+/* Enhanced sensor readings with glow effects */
+.reading-value {
+  transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+
+/* Connection status enhancements */
+#connection-status, #controller-status, #sensor-status {
+  transition: color 0.3s ease, text-shadow 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Game over screen particle effects */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Enhanced pulse animation for active elements */
+@keyframes pulse {
+  0% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+  50% { 
+    transform: scale(1.05); 
+    opacity: 0.8; 
+  }
+  100% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+}
+
+/* Enhanced glow animation for status indicators */
+@keyframes glow {
+  0% { 
+    text-shadow: 0 0 5px currentColor; 
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% { 
+    text-shadow: 0 0 20px currentColor, 0 0 30px currentColor; 
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+  100% { 
+    text-shadow: 0 0 5px currentColor; 
+    box-shadow: 0 0 5px currentColor;
+  }
+}
+
+/* Flashing animation for critical states */
+@keyframes flash {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.5; }
+}
+
+/* Shake animation for errors */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* Success animation */
+@keyframes success-pulse {
+  0% { 
+    transform: scale(1); 
+    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
+  }
+  70% { 
+    transform: scale(1.1); 
+    box-shadow: 0 0 0 10px rgba(0, 255, 136, 0);
+  }
+  100% { 
+    transform: scale(1); 
+    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0);
+  }
+}
+
+/* Browser Compatibility Banner */
+.compatibility-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, var(--accent-yellow), #ffaa00);
+  color: var(--bg-dark);
+  padding: 12px 20px;
+  z-index: 1003;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.compatibility-banner:not(.hidden) {
+  transform: translateY(0);
+}
+
+.compatibility-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+  gap: 15px;
+}
+
+.compatibility-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.compatibility-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.compatibility-text strong {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 0.7rem;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.compatibility-text p {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 0.5rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.compatibility-dismiss {
+  background: none;
+  border: 2px solid var(--bg-dark);
+  color: var(--bg-dark);
+  font-size: 1.2rem;
+  font-weight: bold;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.compatibility-dismiss:hover {
+  background: var(--bg-dark);
+  color: var(--accent-yellow);
+}
+
+/* Mobile compatibility banner adjustments */
+@media (max-width: 768px) {
+  .compatibility-banner {
+    padding: 10px 15px;
+  }
+  
+  .compatibility-content {
+    gap: 10px;
+  }
+  
+  .compatibility-text strong {
+    font-size: 0.6rem;
+  }
+  
+  .compatibility-text p {
+    font-size: 0.45rem;
+  }
+  
+  .compatibility-dismiss {
+    width: 25px;
+    height: 25px;
+    font-size: 1rem;
+  }
+}
+/* 
+Enhanced Error Handling Styles */
+
+/* Error Modal Enhancements */
+.modal.error-room_not_found_or_full .modal-content {
+  border-color: var(--accent-yellow);
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.3);
+}
+
+.modal.error-websocket_error .modal-content {
+  border-color: var(--status-disconnected);
+  box-shadow: 0 0 20px rgba(255, 0, 85, 0.3);
+}
+
+.modal.error-sensor_error .modal-content {
+  border-color: var(--accent-pink);
+  box-shadow: 0 0 20px rgba(255, 0, 170, 0.3);
+}
+
+/* Connection Status Enhancements */
+.status {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.status.connecting {
+  background-color: rgba(255, 255, 0, 0.2);
+  color: var(--accent-yellow);
+  border-color: var(--accent-yellow);
+  animation: pulse 1.5s infinite;
+}
+
+.status.connected {
+  background-color: rgba(0, 255, 136, 0.2);
+  color: var(--status-connected);
+  border-color: var(--status-connected);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.status.waiting {
+  background-color: rgba(0, 255, 255, 0.2);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  animation: glow 2s infinite;
+}
+
+.status.ready {
+  background-color: rgba(0, 255, 136, 0.3);
+  color: var(--status-connected);
+  border-color: var(--status-connected);
+  animation: success-pulse 2s infinite;
+}
+
+.status.disconnected {
+  background-color: rgba(255, 0, 85, 0.2);
+  color: var(--status-disconnected);
+  border-color: var(--status-disconnected);
+  animation: shake 0.5s ease-in-out;
+}
+
+.status.error {
+  background-color: rgba(255, 0, 85, 0.3);
+  color: var(--status-disconnected);
+  border-color: var(--status-disconnected);
+  animation: shake 0.5s ease-in-out, pulse 1s infinite;
+}
+
+.status.reconnecting {
+  background-color: rgba(255, 255, 0, 0.2);
+  color: var(--accent-yellow);
+  border-color: var(--accent-yellow);
+  animation: glow 1s infinite;
+}
+
+/* Sensor Status Specific Styles */
+.status.active {
+  background-color: rgba(0, 255, 136, 0.3);
+  color: var(--status-connected);
+  border-color: var(--status-connected);
+  animation: pulse 2s infinite;
+}
+
+.status.permission_denied {
+  background-color: rgba(255, 0, 85, 0.3);
+  color: var(--status-disconnected);
+  border-color: var(--status-disconnected);
+}
+
+.status.not_supported {
+  background-color: rgba(128, 128, 128, 0.3);
+  color: #888;
+  border-color: #888;
+}
+
+/* Error Message Enhancements */
+.modal-content {
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  animation: scan 2s linear infinite;
+}
+
+@keyframes scan {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Enhanced Notification Styles */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1001;
+  max-width: 300px;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+}
+
+.notification:not(.hidden) {
+  transform: translateX(0);
+}
+
+.notification-content {
+  background: rgba(0, 255, 136, 0.9);
+  color: var(--bg-dark);
+  padding: 16px;
+  border-radius: 8px;
+  border: 2px solid var(--status-connected);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.notification-icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.notification-message {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* Loading Overlay Enhancements */
+.loading-spinner {
+  position: relative;
+}
+
+.loading-spinner::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border: 4px solid transparent;
+  border-top: 4px solid var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Retry Button Styles */
+.retry-button {
+  background: var(--btn-secondary);
+  color: var(--text-primary);
+  border: 2px solid var(--btn-secondary);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 12px;
+}
+
+.retry-button:hover {
+  background: var(--btn-secondary-hover);
+  border-color: var(--btn-secondary-hover);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Connection Indicator Animations */
+@keyframes connection-pulse {
+  0%, 100% { 
+    opacity: 1; 
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.7; 
+    transform: scale(1.05);
+  }
+}
+
+@keyframes error-flash {
+  0%, 100% { background-color: rgba(255, 0, 85, 0.2); }
+  50% { background-color: rgba(255, 0, 85, 0.5); }
+}
+
+/* Responsive Error Handling */
+@media (max-width: 768px) {
+  .notification {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+  
+  .modal-content {
+    margin: 20px;
+    max-width: none;
+  }
+  
+  .status {
+    font-size: 8px;
+    padding: 6px 12px;
+  }
+}
+
+/* Debug Info Enhancements */
+.debug-info {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--text-secondary);
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 16px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+.debug-info h4 {
+  color: var(--accent-cyan);
+  margin-bottom: 8px;
+}
+
+#debug-messages {
+  max-height: 120px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  border-radius: 2px;
+  font-family: 'Courier New', monospace;
+}
+
+#debug-messages div {
+  margin-bottom: 4px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#debug-messages div:last-child {
+  border-bottom: none;
 }

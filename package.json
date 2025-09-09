@@ -5,15 +5,31 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "NODE_ENV=development node server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "monitor": "node monitor.js",
+    "test": "echo \"No tests specified\" && exit 0",
+    "build": "echo \"No build step required for server\" && exit 0",
+    "health": "curl -f http://localhost:${PORT:-8080}/health || exit 1",
+    "deploy:render": "echo 'Push to main branch to deploy to Render'",
+    "deploy:frontend": "echo 'Push to main branch to deploy frontend to GitHub Pages'"
   },
   "dependencies": {
     "ws": "^8.14.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   },
-  "keywords": ["websocket", "signaling", "game", "fitness"],
+  "keywords": ["websocket", "signaling", "game", "fitness", "motion-control", "webrtc"],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/situp-bird-game.git"
+  },
+  "homepage": "https://yourusername.github.io/situp-bird-game",
+  "bugs": {
+    "url": "https://github.com/yourusername/situp-bird-game/issues"
+  }
 }

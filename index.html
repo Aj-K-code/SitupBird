@@ -133,7 +133,9 @@
                 </div>
             </div>
             
-            <canvas id="game-canvas" width="800" height="600"></canvas>
+            <div class="canvas-container">
+                <canvas id="game-canvas" width="800" height="600"></canvas>
+            </div>
             
             <div class="game-footer">
                 <button id="back-to-menu-btn" class="game-button small">BACK TO MENU</button>
@@ -184,6 +186,7 @@
             <div class="debug-info" id="debug-info" style="display: none;">
                 <h4>DEBUG INFO:</h4>
                 <div id="debug-messages"></div>
+                <button id="test-sensors-btn" class="game-button small" style="margin-top: 10px;">TEST SENSORS DIRECTLY</button>
             </div>
             
             <div class="controller-footer">
@@ -212,6 +215,26 @@
             <div class="modal-footer">
                 <button id="error-ok-btn" class="game-button primary">OK</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Success Notification -->
+    <div id="success-notification" class="notification hidden">
+        <div class="notification-content">
+            <div class="notification-icon">✓</div>
+            <div id="success-message" class="notification-message">Success!</div>
+        </div>
+    </div>
+
+    <!-- Browser Compatibility Banner -->
+    <div id="compatibility-banner" class="compatibility-banner hidden">
+        <div class="compatibility-content">
+            <div class="compatibility-icon">⚠️</div>
+            <div class="compatibility-text">
+                <strong>Limited Compatibility Detected</strong>
+                <p>Some features may not work properly on this browser/device.</p>
+            </div>
+            <button id="compatibility-dismiss" class="compatibility-dismiss">×</button>
         </div>
     </div>
 

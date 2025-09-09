@@ -1,3 +1,122 @@
+// Browser Compatibility Detection
+class BrowserCompatibility {
+    static checkSupport() {
+        const support = {
+            webSocket: !!window.WebSocket,
+            deviceMotion: !!window.DeviceMotionEvent,
+            canvas: !!document.createElement('canvas').getContext,
+            webAudio: !!(window.AudioContext || window.webkitAudioContext),
+            localStorage: !!window.localStorage,
+            es6: (function() {
+                try {
+                    new Function("(a = 0) => a");
+                    return true;
+                } catch (err) {
+                    return false;
+                }
+            })(),
+            touchEvents: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+            pointerEvents: !!window.PointerEvent,
+            orientation: !!window.DeviceOrientationEvent,
+            fullscreen: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled || document.mozFullScreenEnabled),
+            vibration: !!navigator.vibrate,
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+            isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+            isAndroid: /Android/.test(navigator.userAgent),
+            isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+            isChrome: /Chrome/.test(navigator.userAgent),
+            isFirefox: /Firefox/.test(navigator.userAgent),
+            isEdge: /Edge/.test(navigator.userAgent)
+        };
+        
+        return support;
+    }
+    
+    static getUnsupportedFeatures() {
+        const support = this.checkSupport();
+        const unsupported = [];
+        
+        if (!support.webSocket) unsupported.push('WebSocket connections');
+        if (!support.deviceMotion) unsupported.push('Motion sensors');
+        if (!support.canvas) unsupported.push('Canvas graphics');
+        if (!support.webAudio) unsupported.push('Audio playback');
+        if (!support.es6) unsupported.push('Modern JavaScript features');
+        
+        return unsupported;
+    }
+    
+    static getCompatibilityMessage() {
+        const unsupported = this.getUnsupportedFeatures();
+        const support = this.checkSupport();
+        
+        if (unsupported.length === 0) {
+            return { compatible: true, message: 'Your browser supports all required features!' };
+        }
+        
+        let message = 'Some features may not work properly:\n\n';
+        message += unsupported.map(feature => `• ${feature}`).join('\n');
+        message += '\n\nFor the best experience, please use:\n';
+        
+        if (support.isMobile) {
+            message += '• Chrome for Android (latest version)\n';
+            message += '• Safari for iOS (iOS 13+)\n';
+            message += '• Firefox Mobile (latest version)';
+        } else {
+            message += '• Chrome (latest version)\n';
+            message += '• Firefox (latest version)\n';
+            message += '• Safari (latest version)\n';
+            message += '• Edge (latest version)';
+        }
+        
+        return { compatible: false, message: message, unsupported: unsupported };
+    }
+    
+    static showCompatibilityWarning() {
+        const compatibility = this.getCompatibilityMessage();
+        
+        if (!compatibility.compatible) {
+            console.warn('Browser compatibility issues detected:', compatibility.unsupported);
+            
+            // Show compatibility banner instead of modal for better UX
+            const banner = document.getElementById('compatibility-banner');
+            const dismissBtn = document.getElementById('compatibility-dismiss');
+            
+            if (banner) {
+                banner.classList.remove('hidden');
+                
+                // Set up dismiss functionality
+                if (dismissBtn) {
+                    dismissBtn.addEventListener('click', () => {
+                        banner.classList.add('hidden');
+                        localStorage.setItem('compatibility-warning-dismissed', 'true');
+                    });
+                }
+                
+                // Auto-dismiss after 10 seconds
+                setTimeout(() => {
+                    if (!banner.classList.contains('hidden')) {
+                        banner.classList.add('hidden');
+                    }
+                }, 10000);
+            }
+        }
+        
+        return compatibility;
+    }
+    
+    static shouldShowCompatibilityWarning() {
+        // Don't show if user has already dismissed it
+        if (localStorage.getItem('compatibility-warning-dismissed') === 'true') {
+            return false;
+        }
+        
+        const unsupported = this.getUnsupportedFeatures();
+        return unsupported.length > 0;
+    }
+}
+
 // WebSocket Client Base Class
 class WebSocketClient {
     constructor(serverUrl) {
@@ -9,6 +128,13 @@ class WebSocketClient {
         this.reconnectDelay = 1000;
         this.messageHandlers = new Map();
         this.onConnectionChange = null;
+        this.onError = null;
+        
+        // Enhanced error tracking
+        this.lastError = null;
+        this.errorHistory = [];
+        this.maxErrorHistory = 10;
+        this.connectionTimeouts = [];
         
         // Check WebSocket support
         if (!window.WebSocket) {
@@ -26,8 +152,14 @@ class WebSocketClient {
             return `${protocol}//${host}:8080`;
         }
         
-        // For production - try to use same host with WebSocket protocol
-        // If deployed on Render or similar, this should work
+        // For GitHub Pages deployment - connect to Render backend
+        if (host.includes('github.io') || host.includes('pages.dev')) {
+            // Replace with your actual Render deployment URL
+            const renderUrl = 'situp-bird-server.onrender.com'; // Update this with actual Render URL
+            return `wss://${renderUrl}`;
+        }
+        
+        // For production deployment on same domain (Render full-stack)
         const port = window.location.port ? `:${window.location.port}` : '';
         return `${protocol}//${host}${port}`;
     }
@@ -41,15 +173,20 @@ class WebSocketClient {
                 const connectionTimeout = setTimeout(() => {
                     if (this.socket.readyState === WebSocket.CONNECTING) {
                         this.socket.close();
-                        reject(new Error('Connection timeout'));
+                        const error = new Error('Connection timeout - Unable to connect to server');
+                        this.recordError(error, 'CONNECTION_TIMEOUT');
+                        reject(error);
                     }
                 }, 10000); // 10 second timeout
+                
+                this.connectionTimeouts.push(connectionTimeout);
 
                 this.socket.onopen = () => {
-                    clearTimeout(connectionTimeout);
+                    this.clearConnectionTimeouts();
                     console.log('WebSocket connected to:', this.serverUrl);
                     this.connectionStatus = 'connected';
                     this.reconnectAttempts = 0;
+                    this.lastError = null; // Clear last error on successful connection
                     this.notifyConnectionChange();
                     resolve();
                 };
@@ -60,30 +197,59 @@ class WebSocketClient {
                         this.handleMessage(message);
                     } catch (error) {
                         console.error('Failed to parse message:', error);
+                        this.recordError(error, 'MESSAGE_PARSE_ERROR');
+                        this.handleError('Failed to parse server message', 'MESSAGE_PARSE_ERROR');
                     }
                 };
 
                 this.socket.onclose = (event) => {
-                    clearTimeout(connectionTimeout);
+                    this.clearConnectionTimeouts();
                     console.log('WebSocket disconnected:', event.code, event.reason);
+                    
+                    const wasConnected = this.connectionStatus === 'connected';
                     this.connectionStatus = 'disconnected';
                     this.notifyConnectionChange();
                     
-                    // Attempt reconnection if not a clean close
-                    if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-                        this.attemptReconnect();
+                    // Handle different close codes
+                    if (event.code === 1000) {
+                        // Clean close - no reconnection needed
+                        console.log('Clean disconnect');
+                    } else if (event.code === 1006) {
+                        // Abnormal closure
+                        const error = new Error('Connection lost unexpectedly');
+                        this.recordError(error, 'ABNORMAL_CLOSURE');
+                        if (wasConnected && this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.attemptReconnect();
+                        } else if (!wasConnected) {
+                            reject(error);
+                        }
+                    } else {
+                        // Other error codes
+                        const error = new Error(`Connection closed with code ${event.code}: ${event.reason || 'Unknown reason'}`);
+                        this.recordError(error, 'CONNECTION_CLOSED');
+                        if (wasConnected && this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.attemptReconnect();
+                        } else if (!wasConnected) {
+                            reject(error);
+                        }
                     }
                 };
 
                 this.socket.onerror = (error) => {
-                    clearTimeout(connectionTimeout);
+                    this.clearConnectionTimeouts();
                     console.error('WebSocket error:', error);
                     this.connectionStatus = 'error';
+                    this.recordError(error, 'WEBSOCKET_ERROR');
                     this.notifyConnectionChange();
-                    reject(error);
+                    
+                    // Provide more specific error message
+                    const errorMessage = this.getConnectionErrorMessage();
+                    this.handleError(errorMessage, 'WEBSOCKET_ERROR');
+                    reject(new Error(errorMessage));
                 };
 
             } catch (error) {
+                this.recordError(error, 'CONNECTION_SETUP_ERROR');
                 reject(error);
             }
         });
@@ -91,18 +257,24 @@ class WebSocketClient {
 
     attemptReconnect() {
         this.reconnectAttempts++;
-        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000); // Cap at 30 seconds
         
         console.log(`Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
         this.connectionStatus = 'reconnecting';
         this.notifyConnectionChange();
         
         setTimeout(() => {
-            this.connect().catch(() => {
+            this.connect().catch((error) => {
+                console.error('Reconnection attempt failed:', error);
+                
                 if (this.reconnectAttempts >= this.maxReconnectAttempts) {
                     console.error('Max reconnection attempts reached');
                     this.connectionStatus = 'failed';
+                    this.handleError('Unable to reconnect to server. Please check your connection and try again.', 'MAX_RECONNECT_ATTEMPTS');
                     this.notifyConnectionChange();
+                } else {
+                    // Continue trying to reconnect
+                    this.attemptReconnect();
                 }
             });
         }, delay);
@@ -139,12 +311,76 @@ class WebSocketClient {
     }
 
     disconnect() {
+        this.clearConnectionTimeouts();
         if (this.socket) {
             this.socket.close(1000, 'Client disconnect');
             this.socket = null;
         }
         this.connectionStatus = 'disconnected';
         this.notifyConnectionChange();
+    }
+    
+    // Enhanced error handling methods
+    recordError(error, errorType) {
+        const errorRecord = {
+            error: error,
+            type: errorType,
+            timestamp: Date.now(),
+            reconnectAttempt: this.reconnectAttempts
+        };
+        
+        this.lastError = errorRecord;
+        this.errorHistory.push(errorRecord);
+        
+        // Keep error history manageable
+        if (this.errorHistory.length > this.maxErrorHistory) {
+            this.errorHistory.shift();
+        }
+    }
+    
+    handleError(message, errorType) {
+        console.error(`WebSocket Error [${errorType}]:`, message);
+        
+        if (this.onError) {
+            this.onError({
+                message: message,
+                type: errorType,
+                canRetry: this.canRetry(errorType),
+                reconnectAttempts: this.reconnectAttempts,
+                maxReconnectAttempts: this.maxReconnectAttempts
+            });
+        }
+    }
+    
+    canRetry(errorType) {
+        const nonRetryableErrors = ['WEBSOCKET_NOT_SUPPORTED', 'INVALID_URL'];
+        return !nonRetryableErrors.includes(errorType) && this.reconnectAttempts < this.maxReconnectAttempts;
+    }
+    
+    getConnectionErrorMessage() {
+        // Provide user-friendly error messages based on common scenarios
+        if (this.serverUrl.includes('localhost') || this.serverUrl.includes('127.0.0.1')) {
+            return 'Cannot connect to local server. Make sure the server is running on port 8080.';
+        } else if (this.serverUrl.includes('ws://') && window.location.protocol === 'https:') {
+            return 'Cannot connect to insecure WebSocket from secure page. Server must support WSS.';
+        } else if (this.serverUrl.includes('onrender.com')) {
+            return 'Cannot connect to server. The server may be starting up (this can take up to 30 seconds on free hosting). Please wait and try again.';
+        } else {
+            return 'Cannot connect to server. Please check your internet connection and try again.';
+        }
+    }
+    
+    clearConnectionTimeouts() {
+        this.connectionTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.connectionTimeouts = [];
+    }
+    
+    getErrorHistory() {
+        return [...this.errorHistory];
+    }
+    
+    getLastError() {
+        return this.lastError;
     }
 }
 
@@ -202,10 +438,49 @@ class GameClient extends WebSocketClient {
 
         this.onMessage('ERROR', (message) => {
             console.error('Server error:', message.message);
-            if (this.onError) {
-                this.onError(message.message);
-            }
+            this.handleServerError(message);
         });
+    }
+    
+    handleServerError(message) {
+        const errorType = this.getErrorType(message.message);
+        const userFriendlyMessage = this.getUserFriendlyErrorMessage(message.message);
+        
+        if (this.onError) {
+            this.onError({
+                message: userFriendlyMessage,
+                originalMessage: message.message,
+                type: errorType,
+                canRetry: this.canRetryServerError(errorType)
+            });
+        }
+    }
+    
+    getErrorType(errorMessage) {
+        if (errorMessage.includes('Room not found') || errorMessage.includes('is full')) {
+            return 'ROOM_NOT_FOUND_OR_FULL';
+        } else if (errorMessage.includes('Invalid room code')) {
+            return 'INVALID_ROOM_CODE';
+        } else if (errorMessage.includes('Failed to create room')) {
+            return 'ROOM_CREATION_FAILED';
+        }
+        return 'UNKNOWN_SERVER_ERROR';
+    }
+    
+    getUserFriendlyErrorMessage(errorMessage) {
+        if (errorMessage.includes('Room not found') || errorMessage.includes('is full')) {
+            return 'Room not found or is full. Please check the room code or create a new game.';
+        } else if (errorMessage.includes('Invalid room code')) {
+            return 'Invalid room code. Please enter a 4-digit code.';
+        } else if (errorMessage.includes('Failed to create room')) {
+            return 'Unable to create game room. Please try again.';
+        }
+        return 'Server error occurred. Please try again.';
+    }
+    
+    canRetryServerError(errorType) {
+        const retryableErrors = ['ROOM_CREATION_FAILED', 'UNKNOWN_SERVER_ERROR'];
+        return retryableErrors.includes(errorType);
     }
 
     async createRoom() {
@@ -260,10 +535,45 @@ class ControllerClient extends WebSocketClient {
 
         this.onMessage('ERROR', (message) => {
             console.error('Server error:', message.message);
-            if (this.onError) {
-                this.onError(message.message);
-            }
+            this.handleServerError(message);
         });
+    }
+    
+    handleServerError(message) {
+        const errorType = this.getErrorType(message.message);
+        const userFriendlyMessage = this.getUserFriendlyErrorMessage(message.message);
+        
+        if (this.onError) {
+            this.onError({
+                message: userFriendlyMessage,
+                originalMessage: message.message,
+                type: errorType,
+                canRetry: this.canRetryServerError(errorType)
+            });
+        }
+    }
+    
+    getErrorType(errorMessage) {
+        if (errorMessage.includes('Room not found') || errorMessage.includes('is full')) {
+            return 'ROOM_NOT_FOUND_OR_FULL';
+        } else if (errorMessage.includes('Invalid room code')) {
+            return 'INVALID_ROOM_CODE';
+        }
+        return 'UNKNOWN_SERVER_ERROR';
+    }
+    
+    getUserFriendlyErrorMessage(errorMessage) {
+        if (errorMessage.includes('Room not found') || errorMessage.includes('is full')) {
+            return 'Room not found or is full. Please check the room code and try again.';
+        } else if (errorMessage.includes('Invalid room code')) {
+            return 'Please enter a valid 4-digit room code.';
+        }
+        return 'Unable to join room. Please try again.';
+    }
+    
+    canRetryServerError(errorType) {
+        const retryableErrors = ['UNKNOWN_SERVER_ERROR'];
+        return retryableErrors.includes(errorType);
     }
 
     async joinRoom(code) {
@@ -318,37 +628,72 @@ class SensorManager {
         this.currentY = 0;
         this.onSensorData = null;
         this.onCalibrationUpdate = null;
+        this.onSensorError = null;
         this.sensorSupported = false;
         this.permissionGranted = false;
         this.lastPosition = 0.5;
+        
+        // Motion detection state
+        this.isInDownState = false;
+        this.lastFlapTime = 0;
+        this.flapCooldown = 200; // Minimum time between flaps in ms
+        this.sensorReadings = [];
+        this.maxReadings = 5; // For smoothing
+        
+        // Real-time transmission
+        this.lastTransmissionTime = 0;
+        this.transmissionInterval = 16; // ~60Hz (1000ms / 60fps)
+        this.isTransmitting = false;
+        
+        // Error handling
+        this.consecutiveErrors = 0;
+        this.maxConsecutiveErrors = 5;
+        this.sensorActive = false;
         
         // Check for Generic Sensor API support
         this.checkSensorSupport();
     }
 
     checkSensorSupport() {
-        console.log('Checking sensor support...');
-        console.log('Accelerometer in window:', 'Accelerometer' in window);
-        console.log('DeviceMotionEvent in window:', 'DeviceMotionEvent' in window);
-        console.log('User agent:', navigator.userAgent);
+        const compatibility = BrowserCompatibility.checkSupport();
         
-        if ('Accelerometer' in window) {
-            this.sensorSupported = true;
-            console.log('✅ Generic Sensor API supported');
-        } else if (window.DeviceMotionEvent) {
-            this.sensorSupported = true;
-            console.log('✅ DeviceMotion API supported (fallback)');
-        } else {
-            this.sensorSupported = false;
-            console.warn('❌ No motion sensor APIs supported');
+        // Enhanced sensor support detection
+        this.sensorSupported = compatibility.deviceMotion;
+        this.isIOS = compatibility.isIOS;
+        this.isAndroid = compatibility.isAndroid;
+        this.isMobile = compatibility.isMobile;
+        this.requiresPermission = compatibility.isIOS && parseFloat(navigator.userAgent.match(/OS (\d+)_/)?.[1] || '0') >= 13;
+        
+        console.log('Sensor support check:', {
+            deviceMotion: compatibility.deviceMotion,
+            isIOS: this.isIOS,
+            isAndroid: this.isAndroid,
+            isMobile: this.isMobile,
+            requiresPermission: this.requiresPermission,
+            userAgent: compatibility.userAgent
+        });
+        
+        // Provide specific guidance based on device/browser
+        if (!this.sensorSupported) {
+            let message = 'Motion sensors are not supported. ';
+            if (!this.isMobile) {
+                message += 'Please use a mobile device (phone or tablet) to control the game.';
+            } else if (compatibility.isFirefox) {
+                message += 'Firefox mobile may have limited sensor support. Try Chrome or Safari.';
+            } else {
+                message += 'Please update your browser to the latest version.';
+            }
+            
+            this.handleSensorError({
+                type: 'not_supported',
+                message: 'Device motion not supported',
+                userMessage: message,
+                error: new Error('DeviceMotionEvent not available')
+            });
         }
     }
 
     async requestPermissions() {
-        if (!this.sensorSupported) {
-            throw new Error('Motion sensors not supported on this device');
-        }
-
         try {
             // Handle iOS 13+ permission request for DeviceMotion
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
@@ -356,132 +701,179 @@ class SensorManager {
                 const permission = await DeviceMotionEvent.requestPermission();
                 if (permission === 'granted') {
                     this.permissionGranted = true;
-                    return true;
+                    return { success: true };
                 } else {
-                    throw new Error('DeviceMotion permission denied');
+                    const error = new Error('Motion sensor permission denied. Please enable motion sensors in your browser settings.');
+                    this.handleSensorError({
+                        type: 'permission_denied',
+                        message: 'Motion sensor access denied by user',
+                        userMessage: 'Please enable motion sensors in your browser settings and try again.',
+                        error: error
+                    });
+                    return { success: false, error: error };
                 }
             }
             
-            // Try Generic Sensor API
-            if ('Accelerometer' in window) {
-                try {
-                    const result = await navigator.permissions.query({ name: 'accelerometer' });
-                    if (result.state === 'granted' || result.state === 'prompt') {
-                        this.permissionGranted = true;
-                        return true;
-                    } else {
-                        throw new Error('Accelerometer permission denied');
-                    }
-                } catch (permError) {
-                    console.log('Generic Sensor API permission check failed, falling back to DeviceMotion');
-                    // Fall through to DeviceMotion
-                }
-            }
-            
-            // DeviceMotion API fallback - assume permission granted for older browsers
-            if (window.DeviceMotionEvent) {
-                this.permissionGranted = true;
-                return true;
-            }
-            
-            throw new Error('No motion sensor APIs available');
+            // For Android and other platforms, assume permission is granted
+            // The actual sensor availability will be tested when we try to use it
+            this.permissionGranted = true;
+            return { success: true };
             
         } catch (error) {
             console.error('Permission request failed:', error);
-            throw new Error('Failed to get sensor permissions: ' + error.message);
+            
+            // Provide specific error messages based on the error
+            let userMessage = 'Unable to access motion sensors. ';
+            if (error.name === 'NotAllowedError') {
+                userMessage += 'Please enable motion sensors in your browser settings.';
+            } else if (error.name === 'NotSupportedError') {
+                userMessage += 'Motion sensors are not supported on this device.';
+            } else {
+                userMessage += 'Please make sure you\'re using a mobile device with motion sensors.';
+            }
+            
+            this.handleSensorError({
+                type: 'permission_error',
+                message: 'Failed to request sensor permissions',
+                userMessage: userMessage,
+                error: error
+            });
+            
+            return { success: false, error: error };
         }
     }
 
     async startSensorReading() {
         if (!this.permissionGranted) {
-            await this.requestPermissions();
+            const permissionResult = await this.requestPermissions();
+            if (!permissionResult.success) {
+                return permissionResult;
+            }
         }
 
+        // Just use DeviceMotion API directly - it's the most compatible
+        console.log('Starting DeviceMotion API...');
         try {
-            // For mobile devices, prefer DeviceMotion API as it's more widely supported
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            
-            if (isMobile || !('Accelerometer' in window)) {
-                console.log('Using DeviceMotion API for mobile device');
-                return this.fallbackToDeviceMotion();
-            }
-            
-            // Try Generic Sensor API for desktop
-            if ('Accelerometer' in window) {
-                console.log('Trying Generic Sensor API...');
-                this.sensor = new Accelerometer({ frequency: 60 });
-                
-                this.sensor.addEventListener('reading', () => {
-                    this.currentY = this.sensor.y || 0;
-                    this.processSensorData();
-                });
-
-                this.sensor.addEventListener('error', (event) => {
-                    console.error('Sensor error:', event.error);
-                    console.log('Falling back to DeviceMotion API');
-                    this.fallbackToDeviceMotion();
-                });
-
-                this.sensor.start();
-                console.log('Generic Sensor API started');
-                return true;
-            } else {
-                // Fallback to DeviceMotion API
-                return this.fallbackToDeviceMotion();
-            }
+            const result = await this.setupDeviceMotion();
+            return { success: true, result: result };
         } catch (error) {
-            console.error('Failed to start Generic Sensor API:', error);
-            console.log('Falling back to DeviceMotion API');
-            return this.fallbackToDeviceMotion();
+            return { success: false, error: error };
         }
     }
-
-    fallbackToDeviceMotion() {
-        if (window.DeviceMotionEvent) {
-            console.log('Setting up DeviceMotion API...');
-            this.setupDeviceMotion();
-            return true;
-        }
-        console.error('DeviceMotion API not available');
-        return false;
-    }
-
+    
     setupDeviceMotion() {
-        window.addEventListener('devicemotion', (event) => {
-            const acceleration = event.accelerationIncludingGravity;
-            if (acceleration && acceleration.y !== null) {
-                this.currentY = acceleration.y;
-                this.processSensorData();
+        return new Promise((resolve, reject) => {
+            console.log('Checking DeviceMotionEvent:', typeof window.DeviceMotionEvent);
+            console.log('DeviceMotionEvent exists:', !!window.DeviceMotionEvent);
+            console.log('Window object keys containing "device":', Object.keys(window).filter(k => k.toLowerCase().includes('device')));
+            
+            if (!window.DeviceMotionEvent) {
+                const error = new Error('Motion sensors not supported on this device or browser');
+                this.handleSensorError({
+                    type: 'not_supported',
+                    message: 'DeviceMotion API not available',
+                    userMessage: 'Motion sensors are not supported on this device. Please use a mobile device with motion sensors.',
+                    error: error
+                });
+                reject(error);
+                return;
             }
+            
+            let hasReceivedData = false;
+            let motionHandler = null;
+            
+            const timeout = setTimeout(() => {
+                if (!hasReceivedData) {
+                    if (motionHandler) {
+                        window.removeEventListener('devicemotion', motionHandler);
+                    }
+                    const error = new Error('No motion data received - sensors may not be available');
+                    this.handleSensorError({
+                        type: 'no_data',
+                        message: 'No sensor data received after timeout',
+                        userMessage: 'No motion data detected. Please make sure you\'re on a mobile device with motion sensors enabled, and try moving the device.',
+                        error: error
+                    });
+                    reject(error);
+                }
+            }, 5000); // 5 second timeout
+            
+            motionHandler = (event) => {
+                const acceleration = event.accelerationIncludingGravity;
+                console.log('Motion event received:', acceleration);
+                
+                if (acceleration && (acceleration.y !== null && acceleration.y !== undefined)) {
+                    if (!hasReceivedData) {
+                        hasReceivedData = true;
+                        clearTimeout(timeout);
+                        console.log('✅ DeviceMotion API working - received data:', acceleration.y);
+                        resolve(true);
+                    }
+                    
+                    this.currentY = acceleration.y;
+                    this.processSensorData();
+                } else {
+                    console.log('Motion event received but no Y acceleration data');
+                }
+            };
+            
+            window.addEventListener('devicemotion', motionHandler);
+            console.log('DeviceMotion event listener added, waiting for data...');
+            
+            // Also try to trigger a motion event by logging device info
+            console.log('Device info:', {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                deviceMemory: navigator.deviceMemory,
+                hardwareConcurrency: navigator.hardwareConcurrency
+            });
         });
-        console.log('DeviceMotion API started');
     }
+
+
 
     processSensorData() {
-        // Update calibration data if calibrating
-        if (this.isCalibrating) {
-            if (this.calibrationData.minY === null || this.currentY < this.calibrationData.minY) {
-                this.calibrationData.minY = this.currentY;
+        try {
+            // Reset consecutive errors on successful reading
+            this.consecutiveErrors = 0;
+            this.sensorActive = true;
+            
+            // Add current reading to smoothing buffer
+            this.addSensorReading(this.currentY);
+            
+            // Update calibration data if calibrating
+            if (this.isCalibrating) {
+                if (this.calibrationData.minY === null || this.currentY < this.calibrationData.minY) {
+                    this.calibrationData.minY = this.currentY;
+                }
+                if (this.calibrationData.maxY === null || this.currentY > this.calibrationData.maxY) {
+                    this.calibrationData.maxY = this.currentY;
+                }
+                
+                if (this.onCalibrationUpdate) {
+                    this.onCalibrationUpdate(this.currentY, this.calibrationData);
+                }
             }
-            if (this.calibrationData.maxY === null || this.currentY > this.calibrationData.maxY) {
-                this.calibrationData.maxY = this.currentY;
+
+            // Process sensor data for game logic with real-time throttling
+            const now = Date.now();
+            if (now - this.lastTransmissionTime >= this.transmissionInterval) {
+                const processedData = this.processMotionData();
+                
+                if (this.onSensorData) {
+                    this.onSensorData(processedData);
+                }
+                
+                this.lastTransmissionTime = now;
             }
             
-            if (this.onCalibrationUpdate) {
-                this.onCalibrationUpdate(this.currentY, this.calibrationData);
-            }
-        }
-
-        // Process sensor data for game logic
-        const processedData = this.processMotionData();
-        
-        if (this.onSensorData) {
-            this.onSensorData(processedData);
+        } catch (error) {
+            this.handleSensorError(error);
         }
     }
 
     processMotionData() {
-        const { minY, maxY, threshold } = this.calibrationData;
+        const { minY, maxY, threshold, smoothing } = this.calibrationData;
         
         if (minY === null || maxY === null) {
             return {
@@ -490,34 +882,76 @@ class SensorManager {
                 processed: {
                     isDown: false,
                     shouldFlap: false,
-                    gapPosition: 0.5
+                    gapPosition: 0.5,
+                    normalizedPosition: 0.5,
+                    motionIntensity: 0,
+                    calibrated: false
                 }
             };
         }
 
-        // Normalize position to 0-1 range
+        // Use smoothed Y value for more stable motion detection
+        const smoothedY = this.getSmoothedReading();
+        
+        // Normalize position to 0-1 range using smoothed value
         const range = maxY - minY;
-        const normalizedPosition = range > 0 ? Math.max(0, Math.min(1, (this.currentY - minY) / range)) : 0.5;
+        const normalizedPosition = range > 0 ? Math.max(0, Math.min(1, (smoothedY - minY) / range)) : 0.5;
         
-        // Determine if user is in "down" position (lower threshold)
-        const downThreshold = 0.3; // 30% of range from bottom
-        const upThreshold = 0.7;   // 70% of range from bottom
+        // Calculate motion intensity (rate of change)
+        const motionIntensity = this.calculateMotionIntensity();
         
-        const isDown = normalizedPosition < downThreshold;
-        const isUp = normalizedPosition > upThreshold;
+        // Enhanced situp motion detection with calibrated thresholds
+        const downThreshold = 0.2 + (threshold * 0.1); // Adjustable based on calibration
+        const upThreshold = 0.8 - (threshold * 0.1);   // Adjustable based on calibration
+        const motionThreshold = 0.3; // Minimum motion intensity for valid movement
         
-        // Simple flap detection: transition from down to up
-        const shouldFlap = this.lastPosition < downThreshold && normalizedPosition > upThreshold;
-        this.lastPosition = normalizedPosition;
+        const isCurrentlyDown = normalizedPosition < downThreshold;
+        const isCurrentlyUp = normalizedPosition > upThreshold;
+        
+        // Enhanced flap detection with state tracking and cooldown
+        let shouldFlap = false;
+        const now = Date.now();
+        
+        // Track down state with motion intensity requirement
+        if (isCurrentlyDown && motionIntensity > motionThreshold) {
+            this.isInDownState = true;
+        }
+        
+        // Detect flap: transition from down state to up position with sufficient motion
+        if (this.isInDownState && isCurrentlyUp && motionIntensity > motionThreshold) {
+            // Check cooldown to prevent multiple flaps from single motion
+            if (now - this.lastFlapTime > this.flapCooldown) {
+                shouldFlap = true;
+                this.lastFlapTime = now;
+                this.isInDownState = false; // Reset down state after successful flap
+            }
+        }
+        
+        // Reset down state if user moves to middle position without completing flap
+        if (!isCurrentlyDown && !isCurrentlyUp) {
+            // Only reset if we've been in a stable middle position
+            if (Math.abs(normalizedPosition - 0.5) < 0.1) {
+                this.isInDownState = false;
+            }
+        }
 
         return {
             y: this.currentY,
-            timestamp: Date.now(),
+            smoothedY: smoothedY,
+            timestamp: now,
             processed: {
-                isDown: isDown,
+                isDown: isCurrentlyDown,
                 shouldFlap: shouldFlap,
                 gapPosition: normalizedPosition,
-                normalizedPosition: normalizedPosition
+                normalizedPosition: normalizedPosition,
+                motionIntensity: motionIntensity,
+                calibrated: true,
+                downState: this.isInDownState,
+                thresholds: {
+                    down: downThreshold,
+                    up: upThreshold,
+                    motion: motionThreshold
+                }
             }
         };
     }
@@ -542,14 +976,1288 @@ class SensorManager {
         this.calibrationData = { ...this.calibrationData, ...data };
     }
 
+    addSensorReading(yValue) {
+        // Add reading with timestamp for motion intensity calculation
+        this.sensorReadings.push({
+            y: yValue,
+            timestamp: Date.now()
+        });
+        
+        // Keep only recent readings for smoothing
+        if (this.sensorReadings.length > this.maxReadings) {
+            this.sensorReadings.shift();
+        }
+    }
+    
+    getSmoothedReading() {
+        if (this.sensorReadings.length === 0) {
+            return this.currentY;
+        }
+        
+        // Simple moving average
+        const sum = this.sensorReadings.reduce((acc, reading) => acc + reading.y, 0);
+        return sum / this.sensorReadings.length;
+    }
+    
+    calculateMotionIntensity() {
+        if (this.sensorReadings.length < 2) {
+            return 0;
+        }
+        
+        // Calculate rate of change over recent readings
+        const recent = this.sensorReadings.slice(-3); // Use last 3 readings
+        let totalChange = 0;
+        
+        for (let i = 1; i < recent.length; i++) {
+            const timeDiff = recent[i].timestamp - recent[i-1].timestamp;
+            const valueDiff = Math.abs(recent[i].y - recent[i-1].y);
+            
+            if (timeDiff > 0) {
+                totalChange += valueDiff / (timeDiff / 1000); // Change per second
+            }
+        }
+        
+        return totalChange / (recent.length - 1);
+    }
+    
+    handleSensorError(errorInfo) {
+        // Handle both old format (just error object) and new format (error info object)
+        if (errorInfo.type) {
+            // New enhanced format
+            console.error(`Sensor Error [${errorInfo.type}]:`, errorInfo.message, errorInfo.error);
+            
+            if (this.onSensorError) {
+                this.onSensorError({
+                    type: errorInfo.type,
+                    message: errorInfo.userMessage || errorInfo.message,
+                    technicalMessage: errorInfo.message,
+                    error: errorInfo.error,
+                    canRetry: this.canRetrySensorError(errorInfo.type),
+                    consecutiveErrors: this.consecutiveErrors
+                });
+            }
+        } else {
+            // Legacy format - treat as generic sensor error
+            this.consecutiveErrors++;
+            this.sensorActive = false;
+            
+            console.error('Sensor error:', errorInfo);
+            
+            if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+                // Too many consecutive errors, notify application
+                if (this.onSensorError) {
+                    this.onSensorError({
+                        type: 'consecutive_errors',
+                        message: 'Multiple sensor errors detected. Motion detection may be unreliable.',
+                        error: errorInfo,
+                        canRetry: false,
+                        consecutiveErrors: this.consecutiveErrors
+                    });
+                }
+            } else if (this.consecutiveErrors === 1) {
+                // First error, just log it
+                if (this.onSensorError) {
+                    this.onSensorError({
+                        type: 'sensor_error',
+                        message: 'Sensor reading error occurred.',
+                        error: errorInfo,
+                        canRetry: true,
+                        consecutiveErrors: this.consecutiveErrors
+                    });
+                }
+            }
+        }
+    }
+    
+    canRetrySensorError(errorType) {
+        const nonRetryableErrors = ['not_supported', 'permission_denied'];
+        return !nonRetryableErrors.includes(errorType);
+    }
+    
+    getSensorStatus() {
+        return {
+            active: this.sensorActive,
+            supported: this.sensorSupported,
+            permissionGranted: this.permissionGranted,
+            consecutiveErrors: this.consecutiveErrors,
+            isTransmitting: this.isTransmitting,
+            calibrated: this.calibrationData.minY !== null && this.calibrationData.maxY !== null
+        };
+    }
+    
+    startRealTimeTransmission() {
+        this.isTransmitting = true;
+        this.lastTransmissionTime = 0; // Reset to ensure immediate first transmission
+    }
+    
+    stopRealTimeTransmission() {
+        this.isTransmitting = false;
+    }
+
     stopSensor() {
         if (this.sensor && this.sensor.stop) {
             this.sensor.stop();
             this.sensor = null;
         }
+        
         // DeviceMotion events can't be stopped, but we can ignore them
         this.onSensorData = null;
         this.onCalibrationUpdate = null;
+        this.onSensorError = null;
+        
+        // Reset state
+        this.sensorActive = false;
+        this.isTransmitting = false;
+        this.sensorReadings = [];
+        this.consecutiveErrors = 0;
+    }
+}
+
+// Performance Monitor for Device Optimization
+class PerformanceMonitor {
+    constructor() {
+        this.frameCount = 0;
+        this.lastFPSCheck = 0;
+        this.currentFPS = 60;
+        this.targetFPS = 60;
+        this.performanceLevel = 'high'; // high, medium, low
+        this.adaptiveQuality = true;
+        
+        // Performance metrics
+        this.frameTimeHistory = [];
+        this.maxFrameTimeHistory = 60;
+        this.lagThreshold = 16.67; // 60fps threshold in ms
+        this.consecutiveLagFrames = 0;
+        this.maxConsecutiveLag = 10;
+        
+        // Device capabilities
+        this.deviceCapabilities = this.detectDeviceCapabilities();
+        this.setInitialPerformanceLevel();
+    }
+    
+    detectDeviceCapabilities() {
+        const capabilities = {
+            cores: navigator.hardwareConcurrency || 2,
+            memory: navigator.deviceMemory || 2,
+            connection: navigator.connection?.effectiveType || '4g',
+            pixelRatio: window.devicePixelRatio || 1,
+            screenSize: window.screen.width * window.screen.height,
+            isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+            isLowEnd: false
+        };
+        
+        // Detect low-end devices
+        capabilities.isLowEnd = (
+            capabilities.cores <= 2 ||
+            capabilities.memory <= 2 ||
+            capabilities.connection === 'slow-2g' ||
+            capabilities.connection === '2g' ||
+            (capabilities.isMobile && capabilities.screenSize < 1000000)
+        );
+        
+        console.log('Device capabilities detected:', capabilities);
+        return capabilities;
+    }
+    
+    setInitialPerformanceLevel() {
+        if (this.deviceCapabilities.isLowEnd) {
+            this.performanceLevel = 'low';
+            this.targetFPS = 30;
+        } else if (this.deviceCapabilities.cores <= 4 || this.deviceCapabilities.memory <= 4) {
+            this.performanceLevel = 'medium';
+            this.targetFPS = 45;
+        } else {
+            this.performanceLevel = 'high';
+            this.targetFPS = 60;
+        }
+        
+        console.log(`Initial performance level: ${this.performanceLevel} (target: ${this.targetFPS}fps)`);
+    }
+    
+    measureFrame(deltaTime) {
+        this.frameCount++;
+        this.frameTimeHistory.push(deltaTime);
+        
+        if (this.frameTimeHistory.length > this.maxFrameTimeHistory) {
+            this.frameTimeHistory.shift();
+        }
+        
+        // Check for lag
+        if (deltaTime > this.lagThreshold) {
+            this.consecutiveLagFrames++;
+        } else {
+            this.consecutiveLagFrames = 0;
+        }
+        
+        // Adaptive quality adjustment
+        if (this.adaptiveQuality && this.consecutiveLagFrames > this.maxConsecutiveLag) {
+            this.downgradePerformance();
+            this.consecutiveLagFrames = 0;
+        }
+        
+        // Calculate FPS every second
+        const now = performance.now();
+        if (now - this.lastFPSCheck > 1000) {
+            this.currentFPS = Math.round(1000 / this.getAverageFrameTime());
+            this.lastFPSCheck = now;
+        }
+    }
+    
+    getAverageFrameTime() {
+        if (this.frameTimeHistory.length === 0) return 16.67;
+        return this.frameTimeHistory.reduce((a, b) => a + b, 0) / this.frameTimeHistory.length;
+    }
+    
+    downgradePerformance() {
+        if (this.performanceLevel === 'high') {
+            this.performanceLevel = 'medium';
+            this.targetFPS = 45;
+            console.log('Performance downgraded to medium');
+        } else if (this.performanceLevel === 'medium') {
+            this.performanceLevel = 'low';
+            this.targetFPS = 30;
+            console.log('Performance downgraded to low');
+        }
+    }
+    
+    getQualitySettings() {
+        switch (this.performanceLevel) {
+            case 'low':
+                return {
+                    particleCount: 5,
+                    shadowQuality: false,
+                    animationSmoothing: false,
+                    maxPipes: 3,
+                    renderScale: 0.8
+                };
+            case 'medium':
+                return {
+                    particleCount: 10,
+                    shadowQuality: true,
+                    animationSmoothing: true,
+                    maxPipes: 4,
+                    renderScale: 0.9
+                };
+            case 'high':
+            default:
+                return {
+                    particleCount: 20,
+                    shadowQuality: true,
+                    animationSmoothing: true,
+                    maxPipes: 6,
+                    renderScale: 1.0
+                };
+        }
+    }
+}
+
+// Game Engine for Core Game Logic and Physics
+class GameEngine {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.gameState = 'start'; // 'start', 'playing', 'paused', 'over'
+        this.score = 0;
+        this.frame = 0;
+        this.animationId = null;
+        
+        // Performance monitoring
+        this.performanceMonitor = new PerformanceMonitor();
+        this.qualitySettings = this.performanceMonitor.getQualitySettings();
+        
+        // Bird physics properties
+        this.bird = {
+            x: 100,
+            y: canvas.height / 2,
+            width: 50,
+            height: 40,
+            velocity: 0,
+            gravity: 0.4,
+            flapStrength: -8,
+            rotation: 0
+        };
+        
+        // Pipes array and configuration
+        this.pipes = [];
+        this.pipeWidth = 80;
+        this.pipeGap = 200;
+        this.pipeSpeed = 2;
+        this.pipeSpawnInterval = 120; // frames between pipe spawns
+        this.lastPipeFrame = 0;
+        
+        // Calibration-based pipe positioning
+        this.calibrationData = null;
+        this.defaultGapRange = {
+            min: 0.2, // 20% from top
+            max: 0.8  // 80% from top
+        };
+        
+        // Enhanced pipe generation settings
+        this.pipeVariation = {
+            minInterval: 90,  // Minimum frames between pipes
+            maxInterval: 150, // Maximum frames between pipes
+            gapSizeVariation: 0.2, // ±20% gap size variation
+            positionSmoothing: 0.3 // Smoothing factor for gap position changes
+        };
+        
+        // Game boundaries
+        this.groundHeight = 50;
+        this.ceilingHeight = 0;
+        
+        // Controller connection state
+        this.controllerConnected = false;
+        
+        // Audio system for sound effects
+        this.audioContext = null;
+        this.audioEnabled = false;
+        
+        // Callbacks
+        this.onScoreUpdate = null;
+        this.onGameOver = null;
+        
+        // Bind methods
+        this.gameLoop = this.gameLoop.bind(this);
+        
+        // Initialize audio system
+        this.initializeAudio();
+        
+        // Initialize game
+        this.reset();
+    }
+    
+    updateCanvas(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        // Adjust bird position if canvas size changed
+        if (this.bird.y > canvas.height - this.groundHeight) {
+            this.bird.y = canvas.height / 2;
+        }
+    }
+    
+    initializeAudio() {
+        try {
+            // Create AudioContext for sound generation
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.audioEnabled = true;
+            console.log('Audio system initialized successfully');
+            console.log('Audio context state:', this.audioContext.state);
+        } catch (error) {
+            console.warn('Audio not supported:', error);
+            this.audioEnabled = false;
+        }
+    }
+    
+    resumeAudioContext() {
+        // Resume audio context if suspended (required by browsers for user interaction)
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log('Audio context resumed');
+            }).catch(error => {
+                console.warn('Failed to resume audio context:', error);
+            });
+        }
+    }
+    
+    resumeAudioContextOnUserInteraction() {
+        // Resume audio context on user interaction to comply with browser autoplay policies
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log('Audio context resumed on user interaction');
+            }).catch(error => {
+                console.warn('Failed to resume audio context on user interaction:', error);
+            });
+        }
+    }
+    
+    playFlapSound() {
+        if (!this.audioEnabled || !this.audioContext) {
+            console.log('Audio not available for flap sound');
+            return;
+        }
+        
+        try {
+            console.log('Playing flap sound');
+            this.resumeAudioContext();
+            
+            // Create oscillator for flap sound
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            // Connect nodes
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            // Configure flap sound - quick upward sweep with more character
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(350, this.audioContext.currentTime + 0.08);
+            oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.12);
+            
+            // Configure volume envelope with quick attack and decay
+            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.4, this.audioContext.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.12);
+            
+            // Play sound
+            oscillator.start(this.audioContext.currentTime);
+            oscillator.stop(this.audioContext.currentTime + 0.12);
+            
+        } catch (error) {
+            console.warn('Failed to play flap sound:', error);
+        }
+    }
+    
+    playScoreSound() {
+        if (!this.audioEnabled || !this.audioContext) {
+            console.log('Audio not available for score sound');
+            return;
+        }
+        
+        try {
+            console.log('Playing score sound');
+            this.resumeAudioContext();
+            
+            // Create a pleasant ascending chime sound
+            const frequencies = [523, 659, 784]; // C5, E5, G5 - major chord
+            const noteDuration = 0.15;
+            
+            frequencies.forEach((freq, index) => {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                // Connect nodes
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                // Configure each note
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+                
+                // Configure volume envelope for each note
+                const startTime = this.audioContext.currentTime + (index * 0.08);
+                const endTime = startTime + noteDuration;
+                
+                gainNode.gain.setValueAtTime(0, startTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, endTime);
+                
+                // Play each note
+                oscillator.start(startTime);
+                oscillator.stop(endTime);
+            });
+            
+        } catch (error) {
+            console.warn('Failed to play score sound:', error);
+        }
+    }
+    
+    playCollisionSound() {
+        if (!this.audioEnabled || !this.audioContext) {
+            console.log('Audio not available for collision sound');
+            return;
+        }
+        
+        try {
+            console.log('Playing collision sound');
+            this.resumeAudioContext();
+            
+            // Create a more dramatic collision sound with multiple components
+            // Main crash sound
+            const oscillator1 = this.audioContext.createOscillator();
+            const gainNode1 = this.audioContext.createGain();
+            
+            oscillator1.connect(gainNode1);
+            gainNode1.connect(this.audioContext.destination);
+            
+            oscillator1.type = 'sawtooth';
+            oscillator1.frequency.setValueAtTime(400, this.audioContext.currentTime);
+            oscillator1.frequency.exponentialRampToValueAtTime(60, this.audioContext.currentTime + 0.4);
+            
+            gainNode1.gain.setValueAtTime(0.6, this.audioContext.currentTime);
+            gainNode1.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
+            
+            // Secondary noise component for more impact
+            const oscillator2 = this.audioContext.createOscillator();
+            const gainNode2 = this.audioContext.createGain();
+            
+            oscillator2.connect(gainNode2);
+            gainNode2.connect(this.audioContext.destination);
+            
+            oscillator2.type = 'square';
+            oscillator2.frequency.setValueAtTime(150, this.audioContext.currentTime);
+            oscillator2.frequency.exponentialRampToValueAtTime(30, this.audioContext.currentTime + 0.2);
+            
+            gainNode2.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+            gainNode2.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+            
+            // Play both components
+            oscillator1.start(this.audioContext.currentTime);
+            oscillator1.stop(this.audioContext.currentTime + 0.4);
+            
+            oscillator2.start(this.audioContext.currentTime);
+            oscillator2.stop(this.audioContext.currentTime + 0.2);
+            
+        } catch (error) {
+            console.warn('Failed to play collision sound:', error);
+        }
+    }
+    
+    setCalibrationData(calibrationData) {
+        this.calibrationData = calibrationData;
+        console.log('GameEngine: Calibration data set:', calibrationData);
+    }
+    
+    updateSensorData(sensorData) {
+        // Store current sensor data for dynamic pipe gap positioning
+        this.currentSensorData = sensorData;
+        
+        // Use sensor data to influence future pipe spawning
+        if (sensorData && sensorData.processed && sensorData.processed.calibrated) {
+            // Update pipe generation parameters based on current user position
+            const normalizedPosition = sensorData.processed.normalizedPosition;
+            
+            // Influence next pipe gap position based on user's current position
+            // This creates a more responsive and personalized experience
+            this.nextGapBias = normalizedPosition;
+        }
+    }
+    
+    start() {
+        if (this.gameState === 'start') {
+            this.gameState = 'playing';
+            
+            // Reset game over particles and high score flag
+            this.gameOverParticles = null;
+            this.isNewHighScore = false;
+            
+            // Visual feedback for game start
+            console.log('🎮 Game Started!');
+        }
+        
+        if (!this.animationId) {
+            this.gameLoop();
+        }
+    }
+    
+    stop() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+    }
+    
+    reset() {
+        this.gameState = 'start';
+        this.score = 0;
+        this.frame = 0;
+        this.bird.y = this.canvas.height / 2;
+        this.bird.velocity = 0;
+        this.bird.rotation = 0;
+        this.pipes = [];
+        this.lastPipeFrame = 0;
+        
+        if (this.onScoreUpdate) {
+            this.onScoreUpdate(this.score);
+        }
+    }
+    
+    flap() {
+        if (this.gameState === 'playing') {
+            this.bird.velocity = this.bird.flapStrength;
+            this.playFlapSound();
+        } else if (this.gameState === 'start' && this.controllerConnected) {
+            this.start();
+            this.bird.velocity = this.bird.flapStrength;
+            this.playFlapSound();
+        } else if (this.gameState === 'paused' && this.controllerConnected) {
+            this.gameState = 'playing';
+            this.bird.velocity = this.bird.flapStrength;
+            this.playFlapSound();
+        } else if (this.gameState === 'over') {
+            this.reset();
+            this.start();
+        }
+    }
+    
+    gameLoop(currentTime = performance.now()) {
+        // Performance monitoring
+        const deltaTime = currentTime - this.lastTime;
+        this.lastTime = currentTime;
+        
+        // Measure frame performance
+        this.performanceMonitor.measureFrame(deltaTime);
+        
+        // Update quality settings if performance changed
+        const newQualitySettings = this.performanceMonitor.getQualitySettings();
+        if (JSON.stringify(newQualitySettings) !== JSON.stringify(this.qualitySettings)) {
+            this.qualitySettings = newQualitySettings;
+            console.log('Quality settings updated:', this.qualitySettings);
+        }
+        
+        // Adaptive frame rate limiting
+        const targetFrameTime = 1000 / this.performanceMonitor.targetFPS;
+        if (deltaTime < targetFrameTime - 1) {
+            // Skip frame if running too fast
+            if (this.gameState !== 'over') {
+                this.animationId = requestAnimationFrame(this.gameLoop);
+            }
+            return;
+        }
+        
+        this.update(deltaTime);
+        this.render();
+        
+        if (this.gameState !== 'over') {
+            this.animationId = requestAnimationFrame(this.gameLoop);
+        }
+    }
+    
+    update(deltaTime = 16.67) {
+        if (this.gameState !== 'playing') {
+            return;
+        }
+        
+        this.frame++;
+        
+        // Frame rate independent physics
+        const frameMultiplier = deltaTime / 16.67; // Normalize to 60fps
+        
+        // Update bird physics
+        this.updateBird();
+        
+        // Spawn pipes
+        this.spawnPipes();
+        
+        // Update pipes
+        this.updatePipes();
+        
+        // Check collisions
+        this.checkCollisions();
+        
+        // Update score
+        this.updateScore();
+    }
+    
+    updateBird() {
+        // Apply gravity
+        this.bird.velocity += this.bird.gravity;
+        
+        // Update position
+        this.bird.y += this.bird.velocity;
+        
+        // Update rotation based on velocity
+        this.bird.rotation = Math.max(-0.5, Math.min(0.5, this.bird.velocity * 0.05));
+        
+        // Prevent bird from going above screen
+        if (this.bird.y < this.ceilingHeight) {
+            this.bird.y = this.ceilingHeight;
+            this.bird.velocity = 0;
+        }
+    }
+    
+    spawnPipes() {
+        // Calculate dynamic spawn interval with variation
+        const currentInterval = this.pipeVariation.minInterval + 
+            Math.random() * (this.pipeVariation.maxInterval - this.pipeVariation.minInterval);
+        
+        // Spawn new pipe if enough time has passed
+        if (this.frame - this.lastPipeFrame >= currentInterval) {
+            // Calculate gap position based on calibration data or use default range
+            let gapPosition;
+            
+            if (this.calibrationData && this.calibrationData.minY !== null && this.calibrationData.maxY !== null) {
+                // Use calibration-based positioning with real-time sensor influence
+                const motionRange = this.calibrationData.maxY - this.calibrationData.minY;
+                const normalizedRange = Math.max(0.3, Math.min(1.0, motionRange / 8.0)); // Normalize to reasonable range
+                
+                // Base gap position with random variation
+                let basePosition = 0.5 + (Math.random() - 0.5) * 0.6;
+                
+                // Influence gap position based on user's recent motion (if available)
+                if (this.nextGapBias !== undefined) {
+                    // Blend random positioning with user's motion pattern
+                    // This makes gaps appear in areas the user can more easily reach
+                    const motionInfluence = 0.3; // 30% influence from user motion
+                    basePosition = (basePosition * (1 - motionInfluence)) + (this.nextGapBias * motionInfluence);
+                    
+                    // Add some smoothing to prevent erratic gap positioning
+                    if (this.lastGapPosition !== undefined) {
+                        basePosition = (basePosition * 0.7) + (this.lastGapPosition * 0.3);
+                    }
+                }
+                
+                gapPosition = Math.max(0.15, Math.min(0.85, basePosition));
+                this.lastGapPosition = gapPosition;
+            } else {
+                // Use default random positioning when no calibration data available
+                gapPosition = this.defaultGapRange.min + 
+                    Math.random() * (this.defaultGapRange.max - this.defaultGapRange.min);
+            }
+            
+            // Calculate gap size with variation
+            const gapSizeMultiplier = 1.0 + (Math.random() - 0.5) * this.pipeVariation.gapSizeVariation;
+            const currentGapSize = this.pipeGap * gapSizeMultiplier;
+            
+            // Calculate actual Y position for gap
+            const availableHeight = this.canvas.height - this.groundHeight - currentGapSize - 40; // 40px buffer
+            const gapY = 20 + (gapPosition * availableHeight); // 20px top buffer
+            
+            // Create pipe object with enhanced properties
+            const pipe = {
+                x: this.canvas.width,
+                gapY: gapY,
+                width: this.pipeWidth,
+                gap: currentGapSize,
+                scored: false,
+                // Additional properties for enhanced rendering
+                topHeight: gapY,
+                bottomY: gapY + currentGapSize,
+                bottomHeight: this.canvas.height - gapY - currentGapSize - this.groundHeight,
+                // Calibration context for debugging
+                calibrationBased: !!this.calibrationData,
+                gapPosition: gapPosition
+            };
+            
+            this.pipes.push(pipe);
+            this.lastPipeFrame = this.frame;
+            
+            console.log(`Spawned pipe: gapY=${gapY.toFixed(1)}, gapSize=${currentGapSize.toFixed(1)}, position=${gapPosition.toFixed(2)}, calibrated=${pipe.calibrationBased}`);
+        }
+    }
+    
+    updatePipes() {
+        // Move pipes left and remove off-screen pipes
+        for (let i = this.pipes.length - 1; i >= 0; i--) {
+            const pipe = this.pipes[i];
+            
+            // Move pipe left at current speed
+            pipe.x -= this.pipeSpeed;
+            
+            // Remove pipes that are completely off-screen (with buffer for cleanup)
+            if (pipe.x + pipe.width < -50) {
+                console.log(`Removing off-screen pipe at x=${pipe.x}`);
+                this.pipes.splice(i, 1);
+                continue;
+            }
+            
+            // Update pipe properties for smooth rendering
+            pipe.topHeight = pipe.gapY;
+            pipe.bottomY = pipe.gapY + pipe.gap;
+            pipe.bottomHeight = this.canvas.height - pipe.gapY - pipe.gap - this.groundHeight;
+        }
+        
+        // Log pipe count for debugging
+        if (this.frame % 60 === 0) { // Log every second
+            console.log(`Active pipes: ${this.pipes.length}`);
+        }
+    }
+    
+    updateScore() {
+        // Check if bird passed through any pipes
+        for (const pipe of this.pipes) {
+            if (!pipe.scored && pipe.x + pipe.width < this.bird.x) {
+                pipe.scored = true;
+                this.score++;
+                
+                // Play score sound effect
+                this.playScoreSound();
+                
+                // Update score display
+                if (this.onScoreUpdate) {
+                    this.onScoreUpdate(this.score);
+                }
+                
+                console.log(`Score increased to ${this.score}`);
+            }
+        }
+    }
+    
+    checkCollisions() {
+        const birdLeft = this.bird.x;
+        const birdRight = this.bird.x + this.bird.width;
+        const birdTop = this.bird.y;
+        const birdBottom = this.bird.y + this.bird.height;
+        
+        // Check ground collision
+        if (birdBottom >= this.canvas.height - this.groundHeight) {
+            this.gameOver();
+            return;
+        }
+        
+        // Check ceiling collision
+        if (birdTop <= this.ceilingHeight) {
+            this.gameOver();
+            return;
+        }
+        
+        // Check pipe collisions
+        for (const pipe of this.pipes) {
+            const pipeLeft = pipe.x;
+            const pipeRight = pipe.x + pipe.width;
+            
+            // Check if bird is horizontally aligned with pipe
+            if (birdRight > pipeLeft && birdLeft < pipeRight) {
+                const topPipeBottom = pipe.gapY;
+                const bottomPipeTop = pipe.gapY + pipe.gap;
+                
+                // Check collision with top or bottom pipe
+                if (birdTop < topPipeBottom || birdBottom > bottomPipeTop) {
+                    this.gameOver();
+                    return;
+                }
+            }
+        }
+    }
+    
+    gameOver() {
+        // Only trigger game over once
+        if (this.gameState === 'over') return;
+        
+        this.gameState = 'over';
+        
+        // Play collision sound effect
+        this.playCollisionSound();
+        
+        // Handle high score
+        this.handleHighScore();
+        
+        // Stop the game loop
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
+        // Log final score
+        console.log(`Game Over! Final Score: ${this.score}`);
+        
+        // Trigger game over callback
+        if (this.onGameOver) {
+            this.onGameOver(this.score);
+        }
+        
+        // Restart the render loop to show game over screen
+        this.renderGameOverScreen();
+    }
+    
+    handleHighScore() {
+        const currentHighScore = parseInt(localStorage.getItem('situpbird-highscore') || '0');
+        if (this.score > currentHighScore) {
+            localStorage.setItem('situpbird-highscore', this.score.toString());
+            this.isNewHighScore = true;
+            console.log(`New high score: ${this.score}!`);
+        } else {
+            this.isNewHighScore = false;
+        }
+    }
+    
+    renderGameOverScreen() {
+        // Render one final frame with game over state
+        this.render();
+        
+        // Continue rendering the game over screen
+        const gameOverLoop = () => {
+            if (this.gameState === 'over') {
+                this.render();
+                requestAnimationFrame(gameOverLoop);
+            }
+        };
+        requestAnimationFrame(gameOverLoop);
+    }
+    
+    setControllerConnected(connected) {
+        this.controllerConnected = connected;
+        
+        if (!connected && this.gameState === 'playing') {
+            // Pause the game when controller disconnects
+            this.gameState = 'paused';
+        }
+    }
+    
+    render() {
+        // Clear canvas
+        this.ctx.fillStyle = '#87CEEB'; // Sky blue background
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Render pipes
+        this.renderPipes();
+        
+        // Render ground
+        this.renderGround();
+        
+        // Render bird
+        this.renderBird();
+        
+        // Render UI based on game state
+        this.renderUI();
+    }
+    
+    renderBird() {
+        this.ctx.save();
+        
+        // Move to bird center for rotation
+        this.ctx.translate(this.bird.x + this.bird.width / 2, this.bird.y + this.bird.height / 2);
+        this.ctx.rotate(this.bird.rotation);
+        
+        // Enhanced bird animation with flapping effects
+        const flapCycle = Math.sin(this.frame * 0.3) * 0.5 + 0.5; // 0 to 1 oscillation
+        const isFlapping = this.bird.velocity < 0; // Bird is moving up
+        const wingOffset = isFlapping ? flapCycle * 8 : 4;
+        
+        // Bird body with gradient effect
+        const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, this.bird.width / 2);
+        gradient.addColorStop(0, '#FFE55C'); // Bright yellow center
+        gradient.addColorStop(0.7, '#FFD700'); // Gold
+        gradient.addColorStop(1, '#DAA520'); // Dark gold edge
+        
+        this.ctx.fillStyle = gradient;
+        this.ctx.beginPath();
+        this.ctx.ellipse(0, 0, this.bird.width / 2, this.bird.height / 2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Wing animation with flapping motion
+        this.ctx.fillStyle = '#FF8C00'; // Dark orange wing
+        this.ctx.beginPath();
+        
+        if (isFlapping) {
+            // Flapping wing - more vertical
+            this.ctx.ellipse(-this.bird.width / 6, -wingOffset, 
+                this.bird.width / 3, this.bird.height / 3, -0.3, 0, Math.PI * 2);
+        } else {
+            // Gliding wing - more horizontal
+            this.ctx.ellipse(-this.bird.width / 6, -4, 
+                this.bird.width / 2.5, this.bird.height / 4, -0.1, 0, Math.PI * 2);
+        }
+        this.ctx.fill();
+        
+        // Wing highlight
+        this.ctx.fillStyle = '#FFA500';
+        this.ctx.beginPath();
+        if (isFlapping) {
+            this.ctx.ellipse(-this.bird.width / 6, -wingOffset + 2, 
+                this.bird.width / 4, this.bird.height / 5, -0.3, 0, Math.PI * 2);
+        } else {
+            this.ctx.ellipse(-this.bird.width / 6, -2, 
+                this.bird.width / 3.5, this.bird.height / 6, -0.1, 0, Math.PI * 2);
+        }
+        this.ctx.fill();
+        
+        // Beak
+        this.ctx.fillStyle = '#FF6347'; // Tomato red
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.bird.width / 2 - 5, 0);
+        this.ctx.lineTo(this.bird.width / 2 + 8, -2);
+        this.ctx.lineTo(this.bird.width / 2 + 8, 2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Eye with animation
+        const eyeSize = 6 + Math.sin(this.frame * 0.1) * 1; // Subtle size variation
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.beginPath();
+        this.ctx.ellipse(this.bird.width / 6, -this.bird.height / 6, eyeSize, eyeSize, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eye pupil
+        this.ctx.fillStyle = '#000000';
+        this.ctx.beginPath();
+        this.ctx.ellipse(this.bird.width / 6 + 1, -this.bird.height / 6, eyeSize / 2, eyeSize / 2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eye shine
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.beginPath();
+        this.ctx.ellipse(this.bird.width / 6 + 2, -this.bird.height / 6 - 1, 2, 2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Motion trail effect when flapping
+        if (isFlapping && this.gameState === 'playing') {
+            this.ctx.globalAlpha = 0.3;
+            this.ctx.fillStyle = '#FFD700';
+            for (let i = 1; i <= 3; i++) {
+                this.ctx.beginPath();
+                this.ctx.ellipse(-i * 8, i * 2, this.bird.width / 3, this.bird.height / 3, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+            this.ctx.globalAlpha = 1.0;
+        }
+        
+        this.ctx.restore();
+    }
+    
+    renderPipes() {
+        for (const pipe of this.pipes) {
+            // Enhanced pipe rendering with better visual styling
+            
+            // Main pipe body - darker green
+            this.ctx.fillStyle = '#1a5f1a'; // Dark forest green
+            
+            // Top pipe
+            if (pipe.topHeight > 0) {
+                this.ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
+            }
+            
+            // Bottom pipe
+            if (pipe.bottomHeight > 0) {
+                this.ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, pipe.bottomHeight);
+            }
+            
+            // Pipe caps with enhanced styling
+            const capHeight = 25;
+            const capOverhang = 8;
+            
+            // Top pipe cap
+            if (pipe.topHeight > 0) {
+                // Cap shadow
+                this.ctx.fillStyle = '#0d2f0d'; // Very dark green shadow
+                this.ctx.fillRect(pipe.x - capOverhang + 2, pipe.gapY - capHeight + 2, 
+                    pipe.width + (capOverhang * 2), capHeight);
+                
+                // Main cap
+                this.ctx.fillStyle = '#32CD32'; // Bright lime green
+                this.ctx.fillRect(pipe.x - capOverhang, pipe.gapY - capHeight, 
+                    pipe.width + (capOverhang * 2), capHeight);
+                
+                // Cap highlight
+                this.ctx.fillStyle = '#90EE90'; // Light green highlight
+                this.ctx.fillRect(pipe.x - capOverhang, pipe.gapY - capHeight, 
+                    pipe.width + (capOverhang * 2), 4);
+            }
+            
+            // Bottom pipe cap
+            if (pipe.bottomHeight > 0) {
+                // Cap shadow
+                this.ctx.fillStyle = '#0d2f0d'; // Very dark green shadow
+                this.ctx.fillRect(pipe.x - capOverhang + 2, pipe.bottomY + 2, 
+                    pipe.width + (capOverhang * 2), capHeight);
+                
+                // Main cap
+                this.ctx.fillStyle = '#32CD32'; // Bright lime green
+                this.ctx.fillRect(pipe.x - capOverhang, pipe.bottomY, 
+                    pipe.width + (capOverhang * 2), capHeight);
+                
+                // Cap highlight
+                this.ctx.fillStyle = '#90EE90'; // Light green highlight
+                this.ctx.fillRect(pipe.x - capOverhang, pipe.bottomY, 
+                    pipe.width + (capOverhang * 2), 4);
+            }
+            
+            // Pipe body highlights for 3D effect
+            this.ctx.fillStyle = '#228B22'; // Medium green highlight
+            
+            // Top pipe highlight
+            if (pipe.topHeight > 0) {
+                this.ctx.fillRect(pipe.x, 0, 6, pipe.topHeight);
+            }
+            
+            // Bottom pipe highlight
+            if (pipe.bottomHeight > 0) {
+                this.ctx.fillRect(pipe.x, pipe.bottomY, 6, pipe.bottomHeight);
+            }
+            
+            // Debug visualization for calibration-based pipes (optional)
+            if (pipe.calibrationBased && this.gameState === 'start') {
+                this.ctx.fillStyle = 'rgba(0, 255, 255, 0.3)'; // Cyan overlay for calibrated pipes
+                this.ctx.fillRect(pipe.x, pipe.gapY, pipe.width, pipe.gap);
+                
+                // Show gap position indicator
+                this.ctx.fillStyle = '#00FFFF';
+                this.ctx.font = '12px monospace';
+                this.ctx.fillText(`${(pipe.gapPosition * 100).toFixed(0)}%`, pipe.x + 5, pipe.gapY + pipe.gap/2);
+            }
+        }
+    }
+    
+    renderGround() {
+        this.ctx.fillStyle = '#8B4513'; // Saddle brown
+        this.ctx.fillRect(0, this.canvas.height - this.groundHeight, this.canvas.width, this.groundHeight);
+        
+        // Add grass texture
+        this.ctx.fillStyle = '#228B22';
+        this.ctx.fillRect(0, this.canvas.height - this.groundHeight, this.canvas.width, 10);
+    }
+    
+    renderGameOverParticles() {
+        // Create floating particles effect for game over screen
+        if (!this.gameOverParticles) {
+            this.gameOverParticles = [];
+            for (let i = 0; i < 20; i++) {
+                this.gameOverParticles.push({
+                    x: Math.random() * this.canvas.width,
+                    y: Math.random() * this.canvas.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    size: Math.random() * 3 + 1,
+                    alpha: Math.random() * 0.5 + 0.2,
+                    color: ['#FFD700', '#FF6347', '#32CD32', '#00BFFF'][Math.floor(Math.random() * 4)]
+                });
+            }
+        }
+        
+        // Update and render particles
+        this.gameOverParticles.forEach(particle => {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            
+            // Wrap around screen
+            if (particle.x < 0) particle.x = this.canvas.width;
+            if (particle.x > this.canvas.width) particle.x = 0;
+            if (particle.y < 0) particle.y = this.canvas.height;
+            if (particle.y > this.canvas.height) particle.y = 0;
+            
+            // Render particle
+            this.ctx.globalAlpha = particle.alpha;
+            this.ctx.fillStyle = particle.color;
+            this.ctx.beginPath();
+            this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+        this.ctx.globalAlpha = 1.0;
+    }
+    
+    renderRestartIndicator() {
+        // Animated restart button indicator
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2 + 110;
+        const pulseScale = 1 + Math.sin(this.frame * 0.15) * 0.2;
+        
+        this.ctx.save();
+        this.ctx.translate(centerX, centerY);
+        this.ctx.scale(pulseScale, pulseScale);
+        
+        // Button background
+        this.ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+        this.ctx.fillRect(-60, -15, 120, 30);
+        
+        // Button border
+        this.ctx.strokeStyle = '#00FFFF';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(-60, -15, 120, 30);
+        
+        // Button text
+        this.ctx.fillStyle = '#00FFFF';
+        this.ctx.font = '10px "Press Start 2P"';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('RESTART', 0, 5);
+        
+        this.ctx.restore();
+    }
+
+    renderUI() {
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.font = '16px "Press Start 2P"';
+        this.ctx.textAlign = 'center';
+        
+        if (this.gameState === 'start') {
+            if (this.controllerConnected) {
+                this.ctx.fillText('READY TO PLAY', this.canvas.width / 2, this.canvas.height / 2);
+                this.ctx.font = '12px "Press Start 2P"';
+                this.ctx.fillText('Perform situp motion to start!', this.canvas.width / 2, this.canvas.height / 2 + 30);
+            } else {
+                this.ctx.fillText('WAITING FOR CONTROLLER...', this.canvas.width / 2, this.canvas.height / 2);
+                this.ctx.font = '12px "Press Start 2P"';
+                this.ctx.fillText('Connect your phone as controller', this.canvas.width / 2, this.canvas.height / 2 + 30);
+            }
+        } else if (this.gameState === 'paused') {
+            this.ctx.fillText('CONTROLLER DISCONNECTED', this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.font = '12px "Press Start 2P"';
+            this.ctx.fillText('Reconnect controller to continue', this.canvas.width / 2, this.canvas.height / 2 + 30);
+        } else if (this.gameState === 'over') {
+            // Enhanced game over screen with animated elements
+            
+            // Animated overlay with pulsing effect
+            const overlayAlpha = 0.7 + Math.sin(this.frame * 0.05) * 0.1;
+            this.ctx.fillStyle = `rgba(0, 0, 0, ${overlayAlpha})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            
+            // Animated background particles
+            this.renderGameOverParticles();
+            
+            // Game Over title with animated glow effect
+            const glowIntensity = Math.sin(this.frame * 0.1) * 0.5 + 0.5;
+            this.ctx.shadowColor = '#FF4444';
+            this.ctx.shadowBlur = 20 + glowIntensity * 10;
+            this.ctx.fillStyle = '#FF4444';
+            this.ctx.font = 'bold 24px "Press Start 2P"';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 60);
+            this.ctx.shadowBlur = 0;
+            
+            // Score display with bouncing animation
+            const scoreScale = 1 + Math.sin(this.frame * 0.15) * 0.1;
+            this.ctx.save();
+            this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.scale(scoreScale, scoreScale);
+            this.ctx.fillStyle = '#FFFF44';
+            this.ctx.font = '18px "Press Start 2P"';
+            this.ctx.fillText(`SCORE: ${this.score}`, 0, 0);
+            this.ctx.restore();
+            
+            // High score display with special effects for new records
+            const highScore = localStorage.getItem('situpbird-highscore') || 0;
+            const isNewRecord = this.isNewHighScore;
+            
+            if (isNewRecord) {
+                // New record celebration effect
+                this.ctx.shadowColor = '#44FF44';
+                this.ctx.shadowBlur = 15 + Math.sin(this.frame * 0.2) * 10;
+                this.ctx.fillStyle = '#44FF44';
+                this.ctx.font = 'bold 16px "Press Start 2P"';
+                this.ctx.fillText('NEW HIGH SCORE!', this.canvas.width / 2, this.canvas.height / 2 + 10);
+                this.ctx.shadowBlur = 0;
+            } else {
+                this.ctx.fillStyle = '#44FF44';
+                this.ctx.font = '14px "Press Start 2P"';
+                this.ctx.fillText(`HIGH SCORE: ${highScore}`, this.canvas.width / 2, this.canvas.height / 2 + 10);
+            }
+            
+            // Animated achievement message
+            let achievementText = '';
+            let achievementColor = '#FFFFFF';
+            if (this.score >= 50) {
+                achievementText = 'SITUP MASTER!';
+                achievementColor = '#44FF44';
+            } else if (this.score >= 25) {
+                achievementText = 'FITNESS CHAMPION!';
+                achievementColor = '#44FFFF';
+            } else if (this.score >= 10) {
+                achievementText = 'GOOD WORKOUT!';
+                achievementColor = '#FFAA44';
+            } else if (this.score >= 5) {
+                achievementText = 'KEEP GOING!';
+                achievementColor = '#AA44FF';
+            } else {
+                achievementText = 'NICE TRY!';
+                achievementColor = '#FFFFFF';
+            }
+            
+            if (achievementText) {
+                const textAlpha = Math.sin(this.frame * 0.08) * 0.3 + 0.7;
+                this.ctx.globalAlpha = textAlpha;
+                this.ctx.fillStyle = achievementColor;
+                this.ctx.font = '14px "Press Start 2P"';
+                this.ctx.fillText(achievementText, this.canvas.width / 2, this.canvas.height / 2 + 40);
+                this.ctx.globalAlpha = 1.0;
+            }
+            
+            // Animated restart instruction
+            const restartAlpha = Math.sin(this.frame * 0.12) * 0.4 + 0.6;
+            this.ctx.globalAlpha = restartAlpha;
+            this.ctx.fillStyle = '#CCCCCC';
+            this.ctx.font = '12px "Press Start 2P"';
+            this.ctx.fillText('Perform situp motion to restart!', this.canvas.width / 2, this.canvas.height / 2 + 80);
+            this.ctx.globalAlpha = 1.0;
+            
+            // Restart button visual indicator
+            this.renderRestartIndicator();
+        } else if (this.gameState === 'playing') {
+            // Show current score during gameplay in top-left corner
+            this.ctx.textAlign = 'left';
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.font = '16px "Press Start 2P"';
+            this.ctx.fillText(`Score: ${this.score}`, 20, 40);
+            
+            // Reset text alignment for other UI elements
+            this.ctx.textAlign = 'center';
+        }
     }
 }
 
@@ -568,6 +2276,12 @@ class ScreenManager {
         this.sensorManager = null;
         this.calibrationStep = 0;
         this.calibrationComplete = false;
+        this.shouldResumeAudio = false;
+        
+        // Initialize error handling and status management
+        this.errorHandler = new ErrorHandler();
+        this.connectionStatusManager = new ConnectionStatusManager();
+        
         this.initializeEventListeners();
     }
 
@@ -586,12 +2300,16 @@ class ScreenManager {
 
     initializeEventListeners() {
         // Selection screen buttons
-        document.getElementById('start-game-btn').addEventListener('click', () => {
+        document.getElementById('start-game-btn').addEventListener('click', async () => {
+            // Resume audio context on first user interaction
+            this.resumeAudioContextOnUserInteraction();
             this.showScreen('calibration-screen');
-            this.initializeCalibrationScreen();
+            await this.initializeCalibrationScreen();
         });
 
         document.getElementById('use-controller-btn').addEventListener('click', () => {
+            // Resume audio context on first user interaction
+            this.resumeAudioContextOnUserInteraction();
             this.showScreen('controller-screen');
             this.initializeControllerScreen();
         });
@@ -614,6 +2332,7 @@ class ScreenManager {
 
         // Controller screen functionality
         document.getElementById('join-room-btn').addEventListener('click', () => {
+            this.resumeAudioContextOnUserInteraction();
             this.handleJoinRoom();
         });
 
@@ -625,18 +2344,22 @@ class ScreenManager {
 
         // Calibration screen functionality
         document.getElementById('start-calibration-btn').addEventListener('click', () => {
+            this.resumeAudioContextOnUserInteraction();
             this.startCalibrationProcess();
         });
 
         document.getElementById('next-calibration-btn').addEventListener('click', () => {
+            this.resumeAudioContextOnUserInteraction();
             this.nextCalibrationStep();
         });
 
         document.getElementById('finish-calibration-btn').addEventListener('click', () => {
+            this.resumeAudioContextOnUserInteraction();
             this.finishCalibration();
         });
 
         document.getElementById('recalibrate-btn').addEventListener('click', () => {
+            this.resumeAudioContextOnUserInteraction();
             this.restartCalibration();
         });
 
@@ -649,15 +2372,38 @@ class ScreenManager {
             this.updateManualAdjustment('max', parseFloat(e.target.value));
         });
 
+        // Direct sensor test button
+        document.getElementById('test-sensors-btn').addEventListener('click', () => {
+            this.testSensorsDirectly();
+        });
+
         // Error modal
         document.getElementById('error-ok-btn').addEventListener('click', () => {
             this.hideModal('error-modal');
         });
     }
 
+    resumeAudioContextOnUserInteraction() {
+        // Resume audio context on user interaction to comply with browser autoplay policies
+        // This method is called from the ScreenManager, so we need to access the game engine's audio context
+        if (this.gameEngine && this.gameEngine.audioContext && this.gameEngine.audioContext.state === 'suspended') {
+            this.gameEngine.audioContext.resume().then(() => {
+                console.log('Audio context resumed on user interaction');
+            }).catch(error => {
+                console.warn('Failed to resume audio context on user interaction:', error);
+            });
+        } else if (!this.gameEngine) {
+            // If game engine doesn't exist yet, mark that we should resume audio when it's created
+            this.shouldResumeAudio = true;
+        }
+    }
+
     async initializeGameScreen() {
         // Reset score
         document.getElementById('score').textContent = '0';
+        
+        // Display high score if available
+        this.displayHighScore();
         
         // Initialize game canvas
         this.initializeGameCanvas();
@@ -707,10 +2453,20 @@ class ScreenManager {
     }
 
     setupGameClientHandlers() {
+        // Connection status handling
+        this.gameClient.onConnectionChange = (status) => {
+            this.connectionStatusManager.updateGameConnectionStatus(status, this.gameClient.roomCode);
+        };
+        
+        // Error handling
+        this.gameClient.onError = (errorInfo) => {
+            this.errorHandler.handleWebSocketError(errorInfo);
+        };
+        
         this.gameClient.onRoomCreated = (roomCode) => {
             // Update room code in both calibration and game screens
             document.getElementById('room-code').textContent = roomCode;
-            document.getElementById('connection-status').textContent = 'WAITING FOR CONTROLLER...';
+            this.connectionStatusManager.updateGameConnectionStatus('waiting', roomCode);
             
             // Show room code in calibration screen if we're calibrating
             if (this.currentScreen === 'calibration-screen') {
@@ -720,8 +2476,8 @@ class ScreenManager {
         };
 
         this.gameClient.onControllerConnected = () => {
-            document.getElementById('connection-status').textContent = 'CONNECTED!';
-            this.showSuccess('Controller connected! Ready to play.');
+            this.connectionStatusManager.updateGameConnectionStatus('ready');
+            this.errorHandler.showSuccess('Controller connected! Ready to play.');
             
             // Send calibration data to controller if available
             if (this.sensorManager && this.calibrationComplete) {
@@ -733,21 +2489,36 @@ class ScreenManager {
                 });
                 console.log('Sent calibration data to controller:', calibrationData);
             }
+            
+            // Game engine is ready to receive input
+            if (this.gameEngine) {
+                this.gameEngine.setControllerConnected(true);
+            }
         };
 
         this.gameClient.onControllerDisconnected = () => {
-            document.getElementById('connection-status').textContent = 'CONTROLLER DC';
-            this.showError('Controller disconnected');
+            this.connectionStatusManager.updateGameConnectionStatus('disconnected');
+            this.errorHandler.handlePartnerDisconnection(false);
+            
+            // Pause game when controller disconnects
+            if (this.gameEngine) {
+                this.gameEngine.setControllerConnected(false);
+            }
         };
 
         this.gameClient.onSensorData = (sensorData) => {
-            // Handle sensor data for game logic (will be implemented in later tasks)
-            console.log('Received sensor data:', sensorData);
+            // Handle enhanced sensor data for game logic
+            this.handleGameSensorData(sensorData);
         };
 
         this.gameClient.onCalibrationReceived = (calibrationData) => {
-            // Handle calibration data (will be implemented in later tasks)
             console.log('Received calibration data:', calibrationData);
+            
+            // Pass calibration data to game engine for pipe generation
+            if (this.gameEngine) {
+                this.gameEngine.setCalibrationData(calibrationData);
+                this.showSuccess('Calibration data received! Pipe gaps will now match your motion range.');
+            }
         };
 
         this.gameClient.onConnectionChange = (status) => {
@@ -759,23 +2530,76 @@ class ScreenManager {
         };
     }
 
+    handleGameSensorData(sensorData) {
+        // Log enhanced sensor data for debugging
+        if (sensorData.processed && sensorData.processed.calibrated) {
+            console.log('Game received calibrated sensor data:', {
+                position: sensorData.processed.normalizedPosition.toFixed(2),
+                shouldFlap: sensorData.processed.shouldFlap,
+                isDown: sensorData.processed.isDown,
+                downState: sensorData.processed.downState,
+                motionIntensity: sensorData.processed.motionIntensity.toFixed(2)
+            });
+            
+            // Update connection status to show data reception
+            const connectionStatus = document.getElementById('connection-status');
+            if (connectionStatus.textContent === 'CONNECTED!') {
+                if (sensorData.processed.shouldFlap) {
+                    connectionStatus.textContent = 'FLAP!';
+                    setTimeout(() => {
+                        if (connectionStatus.textContent === 'FLAP!') {
+                            connectionStatus.textContent = 'CONNECTED!';
+                        }
+                    }, 200);
+                }
+            }
+        } else {
+            console.log('Game received uncalibrated sensor data:', sensorData.y);
+        }
+        
+        // Send sensor data to game engine
+        if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
+            // Update game engine with sensor data for dynamic pipe positioning
+            this.gameEngine.updateSensorData(sensorData);
+            
+            // Trigger flap if motion indicates situp completion
+            if (sensorData.processed.shouldFlap) {
+                this.gameEngine.flap();
+            }
+        }
+    }
+
     updateGameConnectionStatus(status) {
         const statusElement = document.getElementById('connection-status');
+        
+        // Remove existing animations
+        statusElement.style.animation = '';
+        statusElement.style.color = '';
+        statusElement.style.textShadow = '';
+        
         switch (status) {
             case 'connected':
                 if (!this.gameClient.roomCode) {
                     statusElement.textContent = 'CONNECTING...';
+                    statusElement.style.color = '#FFFF00';
+                    statusElement.style.animation = 'pulse 1.5s infinite';
                 }
                 break;
             case 'disconnected':
                 statusElement.textContent = 'DISCONNECTED';
+                statusElement.style.color = '#FF0055';
+                statusElement.style.textShadow = '0 0 10px #FF0055';
                 break;
             case 'reconnecting':
                 statusElement.textContent = 'RECONNECTING...';
+                statusElement.style.color = '#FFAA00';
+                statusElement.style.animation = 'glow 1s infinite';
                 break;
             case 'error':
             case 'failed':
                 statusElement.textContent = 'CONNECTION FAILED';
+                statusElement.style.color = '#FF0055';
+                statusElement.style.animation = 'pulse 0.5s infinite';
                 break;
         }
     }
@@ -787,13 +2611,16 @@ class ScreenManager {
         controllerStatus.classList.remove('connected');
         
         // Reset sensor status
-        document.getElementById('sensor-status').textContent = 'SENSOR READY';
+        document.getElementById('sensor-status').textContent = 'WAITING FOR CONNECTION';
         
         // Reset motion bar
         document.getElementById('motion-fill').style.width = '0%';
         
         // Clear room code input
         document.getElementById('room-code-input').value = '';
+        
+        // Hide debug info initially
+        document.getElementById('debug-info').style.display = 'none';
         
         // Clean up existing controller client
         if (this.controllerClient) {
@@ -807,63 +2634,73 @@ class ScreenManager {
             this.controllerSensorManager = null;
         }
         
-        // Initialize motion detection
-        this.initializeControllerMotionDetection();
+        // Don't initialize sensors yet - wait until room connection is successful
     }
 
     setupControllerClientHandlers() {
+        // Connection status handling
+        this.controllerClient.onConnectionChange = (status) => {
+            this.connectionStatusManager.updateControllerConnectionStatus(status);
+        };
+        
+        // Error handling
+        this.controllerClient.onError = (errorInfo) => {
+            this.errorHandler.handleWebSocketError(errorInfo);
+        };
+        
         this.controllerClient.onConnectionSuccess = () => {
-            const controllerStatus = document.getElementById('controller-status');
-            controllerStatus.textContent = 'CONNECTED';
-            controllerStatus.classList.add('connected');
-            this.showSuccess('Connected to game!');
+            this.connectionStatusManager.updateControllerConnectionStatus('connected');
+            this.errorHandler.showSuccess('Connected to game!');
+            
+            // Now initialize motion detection after successful connection
+            this.initializeControllerMotionDetection();
         };
 
         this.controllerClient.onGameDisconnected = () => {
-            const controllerStatus = document.getElementById('controller-status');
-            controllerStatus.textContent = 'GAME DC';
-            controllerStatus.classList.remove('connected');
-            this.showError('Game disconnected');
-        };
-
-        this.controllerClient.onConnectionChange = (status) => {
-            this.updateControllerConnectionStatus(status);
+            this.connectionStatusManager.updateControllerConnectionStatus('disconnected');
+            this.errorHandler.handlePartnerDisconnection(true);
         };
 
         this.controllerClient.onCalibrationReceived = (calibrationData) => {
             console.log('Controller received calibration data:', calibrationData);
             if (this.controllerSensorManager) {
                 this.controllerSensorManager.setCalibrationData(calibrationData);
-                this.showSuccess('Calibration data received! Motion controls are now active.');
+                this.errorHandler.showSuccess('Calibration data received! Motion controls are now active.');
             }
-        };
-
-        this.controllerClient.onError = (message) => {
-            this.showError(message);
         };
     }
 
     updateControllerConnectionStatus(status) {
         const statusElement = document.getElementById('controller-status');
+        
+        // Remove existing animations and styles
+        statusElement.style.animation = '';
+        statusElement.style.boxShadow = '';
+        
         switch (status) {
             case 'connected':
                 // Don't override if already showing room-specific status
                 if (!statusElement.textContent.includes('CONNECTED')) {
                     statusElement.textContent = 'CONNECTING...';
+                    statusElement.style.animation = 'pulse 1.5s infinite';
                 }
                 break;
             case 'disconnected':
                 statusElement.textContent = 'DISCONNECTED';
                 statusElement.classList.remove('connected');
+                statusElement.style.boxShadow = '0 0 10px var(--status-disconnected)';
                 break;
             case 'reconnecting':
                 statusElement.textContent = 'RECONNECTING...';
                 statusElement.classList.remove('connected');
+                statusElement.style.animation = 'glow 1s infinite';
                 break;
             case 'error':
             case 'failed':
                 statusElement.textContent = 'CONNECTION FAILED';
                 statusElement.classList.remove('connected');
+                statusElement.style.animation = 'pulse 0.5s infinite';
+                statusElement.style.boxShadow = '0 0 15px var(--status-disconnected)';
                 break;
         }
     }
@@ -872,23 +2709,98 @@ class ScreenManager {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         
-        // Set canvas size based on container
+        // Enhanced cross-platform canvas sizing
         const container = canvas.parentElement;
-        const maxWidth = Math.min(800, container.clientWidth - 40);
-        const maxHeight = Math.min(600, window.innerHeight * 0.6);
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
+        // Calculate optimal canvas size based on device and screen
+        let maxWidth, maxHeight;
+        
+        if (isMobile) {
+            // Mobile-optimized sizing
+            maxWidth = Math.min(400, container.clientWidth - 20);
+            maxHeight = Math.min(300, window.innerHeight * 0.5);
+        } else {
+            // Desktop sizing
+            maxWidth = Math.min(800, container.clientWidth - 40);
+            maxHeight = Math.min(600, window.innerHeight * 0.6);
+        }
+        
+        // Maintain 4:3 aspect ratio
+        const aspectRatio = 4 / 3;
+        if (maxWidth / maxHeight > aspectRatio) {
+            maxWidth = maxHeight * aspectRatio;
+        } else {
+            maxHeight = maxWidth / aspectRatio;
+        }
+        
+        // Set logical canvas size
         canvas.width = maxWidth;
         canvas.height = maxHeight;
         
-        // Draw placeholder game screen
-        ctx.fillStyle = '#000022';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Set display size (CSS pixels)
+        canvas.style.width = maxWidth + 'px';
+        canvas.style.height = maxHeight + 'px';
         
-        ctx.fillStyle = '#00ffff';
-        ctx.font = '20px "Press Start 2P"';
-        ctx.textAlign = 'center';
-        ctx.fillText('GAME READY', canvas.width / 2, canvas.height / 2);
-        ctx.fillText('WAITING FOR CONTROLLER...', canvas.width / 2, canvas.height / 2 + 40);
+        // Scale for high DPI displays
+        if (devicePixelRatio > 1) {
+            const scaledWidth = maxWidth * devicePixelRatio;
+            const scaledHeight = maxHeight * devicePixelRatio;
+            
+            // Only scale if device can handle it
+            const memoryEstimate = scaledWidth * scaledHeight * 4; // 4 bytes per pixel
+            const maxMemory = 50 * 1024 * 1024; // 50MB limit
+            
+            if (memoryEstimate < maxMemory) {
+                canvas.width = scaledWidth;
+                canvas.height = scaledHeight;
+                ctx.scale(devicePixelRatio, devicePixelRatio);
+            }
+        }
+        
+        // Optimize canvas context for performance
+        ctx.imageSmoothingEnabled = false; // Pixel-perfect rendering
+        ctx.textBaseline = 'top';
+        
+        console.log(`Canvas initialized: ${canvas.width}x${canvas.height} (display: ${canvas.style.width}x${canvas.style.height}, DPR: ${devicePixelRatio})`);
+        
+        // Initialize game engine if not already created
+        if (!this.gameEngine) {
+            this.gameEngine = new GameEngine(canvas);
+            
+            // Resume audio context if user has already interacted
+            if (this.shouldResumeAudio && this.gameEngine.audioContext && this.gameEngine.audioContext.state === 'suspended') {
+                this.gameEngine.audioContext.resume().then(() => {
+                    console.log('Audio context resumed after game engine creation');
+                }).catch(error => {
+                    console.warn('Failed to resume audio context after game engine creation:', error);
+                });
+            }
+            
+            this.gameEngine.onScoreUpdate = (score) => {
+                document.getElementById('score').textContent = score.toString();
+            };
+            this.gameEngine.onGameOver = (finalScore) => {
+                // Handle game over state with final score
+                console.log(`Game Over! Final Score: ${finalScore}`);
+                
+                // Update the score display one final time
+                document.getElementById('score').textContent = finalScore.toString();
+                
+                // Could add additional game over handling here like:
+                // - Save high score to localStorage
+                // - Show game over modal
+                // - Send score to server for leaderboards
+                this.handleGameOver(finalScore);
+            };
+        } else {
+            // Update canvas reference if resized
+            this.gameEngine.updateCanvas(canvas);
+        }
+        
+        // Start the game loop
+        this.gameEngine.start();
     }
 
     async initializeControllerMotionDetection() {
@@ -906,24 +2818,43 @@ class ScreenManager {
                 this.handleControllerMotionData(sensorData);
             };
             
+            // Setup error handling
+            this.controllerSensorManager.onSensorError = (errorInfo) => {
+                this.handleControllerSensorError(errorInfo);
+            };
+            
             document.getElementById('sensor-status').textContent = 'REQUESTING PERMISSIONS...';
             this.addDebugMessage('Requesting permissions...');
             
             // Request permissions and start sensor
-            await this.controllerSensorManager.requestPermissions();
+            const permissionResult = await this.controllerSensorManager.requestPermissions();
+            
+            if (!permissionResult.success) {
+                this.connectionStatusManager.updateSensorStatus('permission_denied');
+                this.addDebugMessage('❌ Permission denied');
+                return;
+            }
+            
             this.addDebugMessage('Permissions granted');
             
-            document.getElementById('sensor-status').textContent = 'STARTING SENSORS...';
+            this.connectionStatusManager.updateSensorStatus('ready');
             this.addDebugMessage('Starting sensor reading...');
             
-            const success = await this.controllerSensorManager.startSensorReading();
+            const sensorResult = await this.controllerSensorManager.startSensorReading();
             
-            if (success) {
-                document.getElementById('sensor-status').textContent = 'SENSOR READY';
+            if (sensorResult.success) {
+                // Start real-time transmission
+                this.controllerSensorManager.startRealTimeTransmission();
+                
+                this.connectionStatusManager.updateSensorStatus('active');
+                
                 this.addDebugMessage('✅ Sensor initialized successfully!');
+                this.addDebugMessage('📡 Real-time transmission active at ~60Hz');
                 console.log('Controller motion detection initialized successfully');
             } else {
-                throw new Error('Failed to start sensor reading');
+                this.connectionStatusManager.updateSensorStatus('error');
+                this.addDebugMessage('❌ Failed to start sensors');
+                throw sensorResult.error || new Error('Failed to start sensor reading');
             }
             
         } catch (error) {
@@ -937,6 +2868,8 @@ class ScreenManager {
                 errorMsg = 'Motion sensor permission denied. Please allow motion access and refresh.';
             } else if (error.message.includes('not supported')) {
                 errorMsg = 'Motion sensors not supported on this device.';
+            } else if (error.message.includes('No motion data')) {
+                errorMsg = 'No motion data received. Make sure you\'re on a mobile device with motion sensors.';
             }
             
             this.showError(errorMsg);
@@ -952,40 +2885,183 @@ class ScreenManager {
         }
     }
 
+    testSensorsDirectly() {
+        this.addDebugMessage('=== DIRECT SENSOR TEST ===');
+        this.addDebugMessage('User Agent: ' + navigator.userAgent);
+        this.addDebugMessage('Protocol: ' + window.location.protocol);
+        this.addDebugMessage('Host: ' + window.location.host);
+        
+        // Check all possible sensor APIs
+        this.addDebugMessage('DeviceMotionEvent: ' + (typeof window.DeviceMotionEvent));
+        this.addDebugMessage('DeviceOrientationEvent: ' + (typeof window.DeviceOrientationEvent));
+        this.addDebugMessage('Accelerometer: ' + (typeof window.Accelerometer));
+        this.addDebugMessage('Gyroscope: ' + (typeof window.Gyroscope));
+        
+        // Check if it's a function vs constructor
+        if (window.DeviceMotionEvent) {
+            this.addDebugMessage('DeviceMotionEvent is: ' + window.DeviceMotionEvent.toString().substring(0, 100));
+        }
+        
+        // Try to check permissions
+        if (navigator.permissions) {
+            this.addDebugMessage('Checking accelerometer permission...');
+            navigator.permissions.query({name: 'accelerometer'}).then(result => {
+                this.addDebugMessage('Accelerometer permission: ' + result.state);
+            }).catch(err => {
+                this.addDebugMessage('Permission query failed: ' + err.message);
+            });
+        }
+        
+        // Check for HTTPS requirement
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+            this.addDebugMessage('⚠️ WARNING: Not using HTTPS - some browsers require HTTPS for motion sensors');
+        }
+        
+        // Try different event names
+        const eventNames = ['devicemotion', 'deviceorientation', 'deviceorientationabsolute'];
+        eventNames.forEach(eventName => {
+            this.addDebugMessage(`Testing ${eventName} event...`);
+            
+            let eventCount = 0;
+            const testHandler = (event) => {
+                eventCount++;
+                this.addDebugMessage(`${eventName} event ${eventCount} received!`);
+                
+                if (eventName === 'devicemotion') {
+                    const acc = event.accelerationIncludingGravity;
+                    if (acc) {
+                        this.addDebugMessage(`  Acceleration: x=${acc.x?.toFixed(2)}, y=${acc.y?.toFixed(2)}, z=${acc.z?.toFixed(2)}`);
+                    }
+                }
+                
+                if (eventCount >= 3) {
+                    window.removeEventListener(eventName, testHandler);
+                    this.addDebugMessage(`✅ ${eventName} is working!`);
+                }
+            };
+            
+            window.addEventListener(eventName, testHandler);
+            
+            setTimeout(() => {
+                if (eventCount === 0) {
+                    window.removeEventListener(eventName, testHandler);
+                    this.addDebugMessage(`❌ No ${eventName} events received`);
+                }
+            }, 2000);
+        });
+    }
+
     handleControllerMotionData(sensorData) {
         // Update motion bar based on processed data
         const motionFill = document.getElementById('motion-fill');
+        const sensorStatus = document.getElementById('sensor-status');
         
-        if (sensorData.processed && sensorData.processed.normalizedPosition !== undefined) {
-            // Use calibrated position for motion bar
-            motionFill.style.width = (sensorData.processed.normalizedPosition * 100) + '%';
+        if (sensorData.processed && sensorData.processed.calibrated) {
+            // Enhanced motion bar with position and state feedback
+            const position = sensorData.processed.normalizedPosition;
+            motionFill.style.width = (position * 100) + '%';
             
-            // Update sensor status based on motion state
-            const sensorStatus = document.getElementById('sensor-status');
+            // Dynamic color based on position and state
             if (sensorData.processed.shouldFlap) {
-                sensorStatus.textContent = 'FLAP DETECTED!';
+                motionFill.style.background = 'linear-gradient(90deg, #00FF00, #32CD32)'; // Bright green for flap
+                motionFill.style.boxShadow = '0 0 15px #00FF00';
+                sensorStatus.textContent = '🚀 FLAP DETECTED!';
+                sensorStatus.style.color = '#00ff00';
+                sensorStatus.style.textShadow = '0 0 10px #00ff00';
+            } else if (sensorData.processed.downState) {
+                motionFill.style.background = 'linear-gradient(90deg, #FF6B6B, #FF8E53)'; // Red-orange for down state
+                motionFill.style.boxShadow = '0 0 10px #FF6B6B';
+                sensorStatus.textContent = '⬇️ DOWN STATE';
+                sensorStatus.style.color = '#ffaa00';
+                sensorStatus.style.textShadow = '0 0 5px #ffaa00';
             } else if (sensorData.processed.isDown) {
-                sensorStatus.textContent = 'DOWN POSITION';
+                motionFill.style.background = 'linear-gradient(90deg, #FF4757, #FF6B6B)'; // Red for down position
+                motionFill.style.boxShadow = '0 0 8px #FF4757';
+                sensorStatus.textContent = '📍 DOWN POSITION';
+                sensorStatus.style.color = '#ff6600';
+                sensorStatus.style.textShadow = '0 0 5px #ff6600';
             } else {
-                sensorStatus.textContent = 'UP POSITION';
+                motionFill.style.background = 'linear-gradient(90deg, #4ECDC4, #44A08D)'; // Teal for up position
+                motionFill.style.boxShadow = '0 0 8px #4ECDC4';
+                sensorStatus.textContent = '📍 UP POSITION';
+                sensorStatus.style.color = '#00aaff';
+                sensorStatus.style.textShadow = '0 0 5px #00aaff';
             }
+            
+            // Add motion intensity visual feedback
+            const motionIntensity = sensorData.processed.motionIntensity;
+            if (motionIntensity > 1.0) {
+                motionFill.style.animation = 'pulse 0.3s ease-in-out';
+                setTimeout(() => {
+                    if (motionFill) motionFill.style.animation = '';
+                }, 300);
+            }
+            
+            // Add debug info for motion intensity
+            this.addDebugMessage(`Motion: ${motionIntensity.toFixed(2)}, Pos: ${position.toFixed(2)}, Down: ${sensorData.processed.downState}`);
+            
         } else {
             // Fallback to simple motion intensity using Y-axis
-            const motionIntensity = Math.abs(sensorData.y) / 10; // Y-axis typically has larger range
+            const motionIntensity = Math.abs(sensorData.y) / 10;
             const normalizedMotion = Math.min(motionIntensity, 1);
             motionFill.style.width = (normalizedMotion * 100) + '%';
             
-            const sensorStatus = document.getElementById('sensor-status');
+            // Default gradient for uncalibrated data
+            motionFill.style.background = 'linear-gradient(90deg, var(--accent-pink), var(--accent-cyan))';
+            motionFill.style.boxShadow = '0 0 5px var(--accent-cyan)';
+            
             if (normalizedMotion > 0.3) {
-                sensorStatus.textContent = 'MOTION DETECTED';
+                sensorStatus.textContent = '📊 MOTION DETECTED';
+                sensorStatus.style.color = '#ffaa00';
+                sensorStatus.style.textShadow = '0 0 5px #ffaa00';
             } else {
-                sensorStatus.textContent = 'SENSOR READY';
+                sensorStatus.textContent = '⚡ SENSOR READY';
+                sensorStatus.style.color = '#00ff00';
+                sensorStatus.style.textShadow = '0 0 5px #00ff00';
             }
         }
         
-        // Send sensor data to game if connected
+        // Send sensor data to game if connected (real-time transmission)
         if (this.controllerClient && this.controllerClient.connectionStatus === 'connected') {
-            this.controllerClient.sendSensorData(sensorData);
+            const success = this.controllerClient.sendSensorData(sensorData);
+            if (!success) {
+                this.addDebugMessage('⚠️ Failed to send sensor data - connection issue');
+            }
+        }
+    }
+    
+    handleControllerSensorError(errorInfo) {
+        console.error('Controller sensor error:', errorInfo);
+        
+        // Update sensor status display
+        this.connectionStatusManager.updateSensorStatus(errorInfo.type, errorInfo);
+        
+        // Add debug message
+        this.addDebugMessage(`❌ Sensor Error [${errorInfo.type}]: ${errorInfo.message}`);
+        
+        // Show user-friendly error message
+        this.errorHandler.handleSensorError(errorInfo);
+        
+        // Handle specific error types
+        switch (errorInfo.type) {
+            case 'consecutive_errors':
+                this.addDebugMessage('⚠️ Multiple sensor errors - motion detection unreliable');
+                break;
+                
+            case 'permission_denied':
+                this.addDebugMessage('❌ Motion sensor permission denied by user');
+                break;
+                
+            case 'not_supported':
+                this.addDebugMessage('❌ Motion sensors not supported on this device');
+                break;
+                
+            case 'no_data':
+                this.addDebugMessage('❌ No motion data received - check device sensors');
+                break;
+                
+            default:
+                this.addDebugMessage(`❓ Unknown sensor error: ${errorInfo.message}`);
         }
     }
 
@@ -1025,12 +3101,40 @@ class ScreenManager {
         }
     }
 
-    showLoading() {
-        document.getElementById('loading-overlay').classList.remove('hidden');
+    showLoading(message = 'LOADING...') {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = loadingOverlay.querySelector('.loading-text');
+        
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
+        
+        loadingOverlay.classList.remove('hidden');
+        
+        // Add animated dots to loading text
+        this.loadingDotAnimation = setInterval(() => {
+            if (loadingText) {
+                const currentText = loadingText.textContent;
+                const baseText = currentText.replace(/\.+$/, '');
+                const dots = currentText.match(/\.+$/);
+                const dotCount = dots ? dots[0].length : 0;
+                
+                if (dotCount >= 3) {
+                    loadingText.textContent = baseText;
+                } else {
+                    loadingText.textContent = baseText + '.'.repeat(dotCount + 1);
+                }
+            }
+        }, 500);
     }
 
     hideLoading() {
         document.getElementById('loading-overlay').classList.add('hidden');
+        
+        if (this.loadingDotAnimation) {
+            clearInterval(this.loadingDotAnimation);
+            this.loadingDotAnimation = null;
+        }
     }
 
     showModal(modalId) {
@@ -1042,16 +3146,79 @@ class ScreenManager {
     }
 
     showError(message) {
-        document.getElementById('error-message').textContent = message;
-        this.showModal('error-modal');
+        // Delegate to the new ErrorHandler
+        this.errorHandler.showError({
+            message: message,
+            type: 'GENERAL_ERROR',
+            canRetry: true
+        });
     }
 
     showSuccess(message) {
-        // You could add a success modal similar to error modal
-        console.log('Success:', message);
+        // Delegate to the new ErrorHandler
+        this.errorHandler.showSuccess(message);
+    }
+    
+    handleGameOver(finalScore) {
+        // Handle game over logic
+        console.log(`Handling game over with score: ${finalScore}`);
+        
+        // Save high score to localStorage
+        const currentHighScore = localStorage.getItem('situpbird-highscore') || 0;
+        if (finalScore > currentHighScore) {
+            localStorage.setItem('situpbird-highscore', finalScore.toString());
+            console.log(`New high score: ${finalScore}!`);
+            
+            // Could show a "New High Score!" message
+            setTimeout(() => {
+                this.showSuccess(`New High Score: ${finalScore}!`);
+            }, 1000);
+        }
+        
+        // Update connection status to show game over
+        const connectionStatus = document.getElementById('connection-status');
+        if (connectionStatus) {
+            connectionStatus.textContent = 'GAME OVER';
+        }
+    }
+    
+    displayHighScore() {
+        // Get high score from localStorage and display it
+        const highScore = localStorage.getItem('situpbird-highscore') || 0;
+        
+        // Find or create high score display element
+        let highScoreElement = document.getElementById('high-score');
+        if (!highScoreElement) {
+            // Create high score display in the game header
+            const gameHeader = document.querySelector('.game-header');
+            if (gameHeader) {
+                const highScoreDisplay = document.createElement('div');
+                highScoreDisplay.className = 'score-display';
+                highScoreDisplay.innerHTML = `
+                    <span class="label">HIGH SCORE:</span>
+                    <span id="high-score" class="code">${highScore}</span>
+                `;
+                
+                // Insert before the current score display
+                const scoreDisplay = gameHeader.querySelector('.score-display');
+                if (scoreDisplay) {
+                    gameHeader.insertBefore(highScoreDisplay, scoreDisplay);
+                } else {
+                    gameHeader.appendChild(highScoreDisplay);
+                }
+            }
+        } else {
+            // Update existing high score display
+            highScoreElement.textContent = highScore;
+        }
     }
 
     cleanupGameClient() {
+        if (this.gameEngine) {
+            this.gameEngine.stop();
+            this.gameEngine = null;
+        }
+        
         if (this.gameClient) {
             this.gameClient.disconnect();
             this.gameClient = null;
@@ -1064,12 +3231,20 @@ class ScreenManager {
             this.controllerClient = null;
         }
         if (this.controllerSensorManager) {
+            this.controllerSensorManager.stopRealTimeTransmission();
             this.controllerSensorManager.stopSensor();
             this.controllerSensorManager = null;
         }
+        
+        // Reset sensor status display
+        const sensorStatus = document.getElementById('sensor-status');
+        if (sensorStatus) {
+            sensorStatus.textContent = 'SENSOR READY';
+            sensorStatus.style.color = '';
+        }
     }
 
-    initializeCalibrationScreen() {
+    async initializeCalibrationScreen() {
         // Reset calibration state
         this.calibrationStep = 0;
         this.calibrationComplete = false;
@@ -1083,8 +3258,33 @@ class ScreenManager {
         // Setup sensor callbacks
         this.setupCalibrationCallbacks();
         
-        // Start with step 1
-        this.updateCalibrationStep(1);
+        // Create game room first so we have a room code
+        try {
+            this.gameClient = new GameClient();
+            this.setupGameClientHandlers();
+            
+            // Show loading while creating room
+            this.showLoading();
+            
+            // Create room
+            const success = await this.gameClient.createRoom();
+            this.hideLoading();
+            
+            if (!success) {
+                this.showError('Failed to create game room. Please try again.');
+                this.showScreen('selection-screen');
+                return;
+            }
+            
+            // Start with step 1
+            this.updateCalibrationStep(1);
+            
+        } catch (error) {
+            this.hideLoading();
+            console.error('Room creation error:', error);
+            this.showError('Failed to create game room: ' + error.message);
+            this.showScreen('selection-screen');
+        }
     }
 
     resetCalibrationUI() {
@@ -1127,26 +3327,14 @@ class ScreenManager {
             // Update current position indicator
             this.updatePositionIndicator(sensorData);
         };
+        
+        this.sensorManager.onSensorError = (errorInfo) => {
+            this.handleCalibrationSensorError(errorInfo);
+        };
     }
 
     async startCalibrationProcess() {
         try {
-            // Create game room first so we have a room code
-            this.gameClient = new GameClient();
-            this.setupGameClientHandlers();
-            
-            // Show loading while creating room
-            this.showLoading();
-            
-            // Create room
-            const success = await this.gameClient.createRoom();
-            this.hideLoading();
-            
-            if (!success) {
-                this.showError('Failed to create game room. Please try again.');
-                return;
-            }
-            
             // Request sensor permissions
             await this.sensorManager.requestPermissions();
             
@@ -1160,7 +3348,6 @@ class ScreenManager {
             this.updateCalibrationStep(2);
             
         } catch (error) {
-            this.hideLoading();
             console.error('Calibration start error:', error);
             this.showError('Failed to start calibration: ' + error.message);
         }
@@ -1209,22 +3396,61 @@ class ScreenManager {
     }
 
     updateCalibrationDisplay(currentY, calibrationData) {
-        // Update current Y value
-        document.getElementById('current-y-value').textContent = currentY.toFixed(1);
+        // Update current Y value with color coding
+        const currentYElement = document.getElementById('current-y-value');
+        currentYElement.textContent = currentY.toFixed(1);
         
-        // Update min/max values
+        // Color code based on motion intensity
+        const motionIntensity = Math.abs(currentY - (this.lastCalibrationY || currentY));
+        this.lastCalibrationY = currentY;
+        
+        if (motionIntensity > 1.0) {
+            currentYElement.style.color = '#00FF88'; // Green for active motion
+            currentYElement.style.textShadow = '0 0 10px #00FF88';
+        } else if (motionIntensity > 0.5) {
+            currentYElement.style.color = '#FFFF00'; // Yellow for moderate motion
+            currentYElement.style.textShadow = '0 0 5px #FFFF00';
+        } else {
+            currentYElement.style.color = '#e0e0ff'; // Default color for minimal motion
+            currentYElement.style.textShadow = 'none';
+        }
+        
+        // Update min/max values with enhanced visual feedback
         if (calibrationData.minY !== null) {
-            document.getElementById('min-y-value').textContent = calibrationData.minY.toFixed(1);
+            const minElement = document.getElementById('min-y-value');
+            minElement.textContent = calibrationData.minY.toFixed(1);
+            minElement.style.color = '#00FF88';
+            minElement.style.textShadow = '0 0 5px #00FF88';
             document.getElementById('min-marker').classList.remove('hidden');
         }
         
         if (calibrationData.maxY !== null) {
-            document.getElementById('max-y-value').textContent = calibrationData.maxY.toFixed(1);
+            const maxElement = document.getElementById('max-y-value');
+            maxElement.textContent = calibrationData.maxY.toFixed(1);
+            maxElement.style.color = '#00FF88';
+            maxElement.style.textShadow = '0 0 5px #00FF88';
             document.getElementById('max-marker').classList.remove('hidden');
         }
         
-        // Update position indicator
+        // Update position indicator with enhanced animation
         this.updatePositionIndicatorFromCalibration(currentY, calibrationData);
+        
+        // Add visual feedback for good calibration range
+        if (calibrationData.minY !== null && calibrationData.maxY !== null) {
+            const range = Math.abs(calibrationData.maxY - calibrationData.minY);
+            const rangeBar = document.querySelector('.range-bar');
+            
+            if (range > 3.0) {
+                rangeBar.style.borderColor = '#00FF88'; // Good range
+                rangeBar.style.boxShadow = '0 0 10px rgba(0, 255, 136, 0.5)';
+            } else if (range > 1.5) {
+                rangeBar.style.borderColor = '#FFFF00'; // Acceptable range
+                rangeBar.style.boxShadow = '0 0 10px rgba(255, 255, 0, 0.5)';
+            } else {
+                rangeBar.style.borderColor = '#FF0055'; // Poor range
+                rangeBar.style.boxShadow = '0 0 10px rgba(255, 0, 85, 0.5)';
+            }
+        }
     }
 
     updatePositionIndicatorFromCalibration(currentY, calibrationData) {
@@ -1234,9 +3460,29 @@ class ScreenManager {
             const range = calibrationData.maxY - calibrationData.minY;
             const position = range > 0 ? (currentY - calibrationData.minY) / range : 0.5;
             const clampedPosition = Math.max(0, Math.min(1, position));
+            
+            // Smooth animation
             positionIndicator.style.left = (clampedPosition * 100) + '%';
+            
+            // Enhanced visual feedback based on position
+            if (clampedPosition < 0.2) {
+                positionIndicator.style.backgroundColor = '#FF6B6B'; // Red for down position
+                positionIndicator.style.boxShadow = '0 0 15px #FF6B6B';
+                positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            } else if (clampedPosition > 0.8) {
+                positionIndicator.style.backgroundColor = '#4ECDC4'; // Teal for up position
+                positionIndicator.style.boxShadow = '0 0 15px #4ECDC4';
+                positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            } else {
+                positionIndicator.style.backgroundColor = '#00FFFF'; // Cyan for middle
+                positionIndicator.style.boxShadow = '0 0 10px #00FFFF';
+                positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.0)';
+            }
         } else {
             positionIndicator.style.left = '50%';
+            positionIndicator.style.backgroundColor = '#00FFFF';
+            positionIndicator.style.boxShadow = '0 0 10px #00FFFF';
+            positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.0)';
         }
     }
 
@@ -1360,6 +3606,23 @@ class ScreenManager {
         }
     }
 
+    handleCalibrationSensorError(errorInfo) {
+        console.error('Calibration sensor error:', errorInfo);
+        
+        switch (errorInfo.type) {
+            case 'consecutive_errors':
+                this.showError('Sensor is unstable during calibration. Please ensure your device is held firmly and try again.');
+                // Optionally restart calibration
+                this.restartCalibration();
+                break;
+                
+            case 'sensor_error':
+                // Just log single errors during calibration, don't interrupt the process
+                console.warn('Calibration sensor warning:', errorInfo.message);
+                break;
+        }
+    }
+
     cleanupCalibration() {
         if (this.sensorManager) {
             this.sensorManager.stopSensor();
@@ -1389,30 +3652,78 @@ class UIAnimations {
     }
 
     initializeAnimations() {
-        // Add button click animations
+        const compatibility = BrowserCompatibility.checkSupport();
+        
+        // Enhanced cross-platform button interactions
         document.querySelectorAll('.game-button').forEach(button => {
-            button.addEventListener('mousedown', () => {
-                button.style.transform = 'scale(0.95) translateY(2px)';
-            });
+            // Mouse events for desktop
+            if (!compatibility.isMobile) {
+                button.addEventListener('mousedown', () => {
+                    button.style.transform = 'scale(0.95) translateY(2px)';
+                });
+                
+                button.addEventListener('mouseup', () => {
+                    button.style.transform = '';
+                });
+                
+                button.addEventListener('mouseleave', () => {
+                    button.style.transform = '';
+                });
+            }
             
-            button.addEventListener('mouseup', () => {
-                button.style.transform = '';
-            });
-            
-            button.addEventListener('mouseleave', () => {
-                button.style.transform = '';
-            });
+            // Touch events for mobile (with proper touch handling)
+            if (compatibility.touchEvents) {
+                button.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // Prevent mouse events from firing
+                    button.style.transform = 'scale(0.95) translateY(2px)';
+                    
+                    // Add haptic feedback if available
+                    if (navigator.vibrate) {
+                        navigator.vibrate(50);
+                    }
+                }, { passive: false });
+                
+                button.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    button.style.transform = '';
+                }, { passive: false });
+                
+                button.addEventListener('touchcancel', (e) => {
+                    e.preventDefault();
+                    button.style.transform = '';
+                }, { passive: false });
+            }
         });
 
-        // Add input focus animations
+        // Enhanced input focus animations with touch support
         document.querySelectorAll('.code-input').forEach(input => {
             input.addEventListener('focus', () => {
                 input.style.boxShadow = '0 0 15px var(--accent-green)';
+                
+                // Scroll input into view on mobile
+                if (compatibility.isMobile) {
+                    setTimeout(() => {
+                        input.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center' 
+                        });
+                    }, 300);
+                }
             });
             
             input.addEventListener('blur', () => {
                 input.style.boxShadow = '';
             });
+        });
+        
+        // Add orientation change handling
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                // Trigger canvas resize after orientation change
+                if (window.screenManager && window.screenManager.currentScreen === 'game-screen') {
+                    window.screenManager.initializeGameCanvas();
+                }
+            }, 500); // Delay to allow orientation change to complete
         });
     }
 
@@ -1437,16 +3748,364 @@ class UIAnimations {
     }
 }
 
+// Enhanced Error Handling and UI Management
+class ErrorHandler {
+    constructor() {
+        this.errorModal = document.getElementById('error-modal');
+        this.errorMessage = document.getElementById('error-message');
+        this.errorOkBtn = document.getElementById('error-ok-btn');
+        this.successNotification = document.getElementById('success-notification');
+        this.successMessage = document.getElementById('success-message');
+        
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        if (this.errorOkBtn) {
+            this.errorOkBtn.addEventListener('click', () => {
+                this.hideError();
+            });
+        }
+        
+        // Close error modal on escape key
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !this.errorModal.classList.contains('hidden')) {
+                this.hideError();
+            }
+        });
+    }
+    
+    enhanceErrorMessage(errorInfo) {
+        const compatibility = BrowserCompatibility.checkSupport();
+        let message = errorInfo.message || 'An error occurred';
+        
+        // Add platform-specific guidance based on error type
+        switch (errorInfo.type) {
+            case 'WEBSOCKET_ERROR':
+            case 'CONNECTION_TIMEOUT':
+                if (!compatibility.webSocket) {
+                    message += '\n\nWebSocket support is required. Please update your browser to the latest version.';
+                } else if (compatibility.isMobile) {
+                    message += '\n\nTry switching between WiFi and mobile data, or move to an area with better signal.';
+                } else {
+                    message += '\n\nCheck your firewall settings and ensure WebSocket connections are allowed.';
+                }
+                break;
+                
+            case 'SENSOR_ERROR':
+            case 'permission_denied':
+                if (compatibility.isIOS) {
+                    message += '\n\nOn iOS: Go to Settings > Safari > Motion & Orientation Access and enable it.';
+                } else if (compatibility.isAndroid) {
+                    message += '\n\nOn Android: Make sure location services are enabled and try refreshing the page.';
+                } else {
+                    message += '\n\nMotion sensors require a mobile device. Please use a phone or tablet.';
+                }
+                break;
+                
+            case 'not_supported':
+                if (!compatibility.isMobile) {
+                    message += '\n\nThis feature requires a mobile device with motion sensors. Please use a smartphone or tablet.';
+                } else if (compatibility.isFirefox) {
+                    message += '\n\nFirefox may have limited sensor support. Try Chrome or Safari for the best experience.';
+                } else {
+                    message += '\n\nYour browser may not support motion sensors. Try updating to the latest version.';
+                }
+                break;
+                
+            case 'ROOM_NOT_FOUND_OR_FULL':
+                message += '\n\nDouble-check the 4-digit code or ask the game host to create a new room.';
+                break;
+                
+            case 'COMPATIBILITY_WARNING':
+                message += '\n\nSome features may not work properly, but you can still try to play.';
+                break;
+                
+            default:
+                // Add general platform guidance for unknown errors
+                if (compatibility.isMobile && !compatibility.isChrome && !compatibility.isSafari) {
+                    message += '\n\nFor the best experience, try using Chrome or Safari.';
+                }
+                break;
+        }
+        
+        return message;
+    }
+    
+    getPlatformSpecificInstructions(errorType) {
+        const compatibility = BrowserCompatibility.checkSupport();
+        
+        const instructions = {
+            webSocket: {
+                mobile: 'Update your browser app to the latest version',
+                desktop: 'Update your browser or try a different one (Chrome, Firefox, Safari, Edge)'
+            },
+            sensors: {
+                ios: 'Enable Motion & Orientation Access in Safari settings',
+                android: 'Enable location services and refresh the page',
+                desktop: 'Use a mobile device with motion sensors'
+            },
+            connection: {
+                mobile: 'Try switching between WiFi and mobile data',
+                desktop: 'Check your internet connection and firewall settings'
+            }
+        };
+        
+        return instructions[errorType] || {};
+    }
+    
+    showError(errorInfo) {
+        if (!this.errorModal || !this.errorMessage) {
+            console.error('Error modal elements not found');
+            alert(errorInfo.message || 'An error occurred');
+            return;
+        }
+        
+        // Enhance error message with platform-specific guidance
+        const enhancedMessage = this.enhanceErrorMessage(errorInfo);
+        
+        // Set error message
+        this.errorMessage.textContent = enhancedMessage;
+        
+        // Add error type class for styling
+        this.errorModal.className = 'modal';
+        if (errorInfo.type) {
+            this.errorModal.classList.add(`error-${errorInfo.type.toLowerCase()}`);
+        }
+        
+        // Show modal
+        this.errorModal.classList.remove('hidden');
+        
+        // Focus on OK button for accessibility
+        if (this.errorOkBtn) {
+            setTimeout(() => this.errorOkBtn.focus(), 100);
+        }
+        
+        // Auto-hide after 10 seconds for non-critical errors
+        if (errorInfo.canRetry !== false) {
+            setTimeout(() => {
+                if (!this.errorModal.classList.contains('hidden')) {
+                    this.hideError();
+                }
+            }, 10000);
+        }
+    }
+    
+    hideError() {
+        if (this.errorModal) {
+            this.errorModal.classList.add('hidden');
+            this.errorModal.className = 'modal hidden'; // Reset classes
+        }
+    }
+    
+    showSuccess(message, duration = 3000) {
+        if (!this.successNotification || !this.successMessage) {
+            console.log('Success:', message);
+            return;
+        }
+        
+        this.successMessage.textContent = message;
+        this.successNotification.classList.remove('hidden');
+        
+        setTimeout(() => {
+            this.successNotification.classList.add('hidden');
+        }, duration);
+    }
+    
+    handleWebSocketError(errorInfo) {
+        let message = errorInfo.message;
+        let showRetryGuidance = false;
+        
+        switch (errorInfo.type) {
+            case 'CONNECTION_TIMEOUT':
+                message = 'Connection timed out. Please check your internet connection and try again.';
+                showRetryGuidance = true;
+                break;
+            case 'WEBSOCKET_ERROR':
+                message = errorInfo.message;
+                showRetryGuidance = true;
+                break;
+            case 'MAX_RECONNECT_ATTEMPTS':
+                message = 'Unable to maintain connection to server. Please refresh the page and try again.';
+                showRetryGuidance = false;
+                break;
+            case 'ROOM_NOT_FOUND_OR_FULL':
+                message = 'Room not found or is full. Please check the room code or create a new game.';
+                showRetryGuidance = false;
+                break;
+            case 'INVALID_ROOM_CODE':
+                message = 'Please enter a valid 4-digit room code.';
+                showRetryGuidance = false;
+                break;
+        }
+        
+        this.showError({
+            message: message,
+            type: errorInfo.type,
+            canRetry: showRetryGuidance
+        });
+    }
+    
+    handleSensorError(errorInfo) {
+        let message = errorInfo.message;
+        
+        switch (errorInfo.type) {
+            case 'permission_denied':
+                message = 'Motion sensor access denied. Please enable motion sensors in your browser settings and refresh the page.';
+                break;
+            case 'not_supported':
+                message = 'Motion sensors are not supported on this device. Please use a mobile device with motion sensors.';
+                break;
+            case 'no_data':
+                message = 'No motion data detected. Please make sure you\'re on a mobile device and try moving it gently.';
+                break;
+            case 'consecutive_errors':
+                message = 'Motion sensor connection is unstable. Please check your device and try again.';
+                break;
+        }
+        
+        this.showError({
+            message: message,
+            type: errorInfo.type,
+            canRetry: errorInfo.canRetry
+        });
+    }
+    
+    handlePartnerDisconnection(isController = false) {
+        const message = isController 
+            ? 'Game device disconnected. Please reconnect or return to menu.'
+            : 'Controller disconnected. Waiting for reconnection...';
+            
+        this.showError({
+            message: message,
+            type: 'PARTNER_DISCONNECTED',
+            canRetry: true
+        });
+    }
+}
+
+// Connection Status Manager
+class ConnectionStatusManager {
+    constructor() {
+        this.gameStatusElement = document.getElementById('connection-status');
+        this.controllerStatusElement = document.getElementById('controller-status');
+        this.sensorStatusElement = document.getElementById('sensor-status');
+    }
+    
+    updateGameConnectionStatus(status, roomCode = null) {
+        if (!this.gameStatusElement) return;
+        
+        switch (status) {
+            case 'connecting':
+                this.gameStatusElement.textContent = 'CONNECTING...';
+                this.gameStatusElement.className = 'status connecting';
+                break;
+            case 'connected':
+                this.gameStatusElement.textContent = roomCode ? `ROOM: ${roomCode}` : 'CONNECTED';
+                this.gameStatusElement.className = 'status connected';
+                break;
+            case 'waiting':
+                this.gameStatusElement.textContent = 'WAITING FOR CONTROLLER...';
+                this.gameStatusElement.className = 'status waiting';
+                break;
+            case 'ready':
+                this.gameStatusElement.textContent = 'READY TO PLAY!';
+                this.gameStatusElement.className = 'status ready';
+                break;
+            case 'disconnected':
+                this.gameStatusElement.textContent = 'CONTROLLER DC';
+                this.gameStatusElement.className = 'status disconnected';
+                break;
+            case 'error':
+                this.gameStatusElement.textContent = 'CONNECTION ERROR';
+                this.gameStatusElement.className = 'status error';
+                break;
+            case 'reconnecting':
+                this.gameStatusElement.textContent = 'RECONNECTING...';
+                this.gameStatusElement.className = 'status reconnecting';
+                break;
+        }
+    }
+    
+    updateControllerConnectionStatus(status) {
+        if (!this.controllerStatusElement) return;
+        
+        switch (status) {
+            case 'connecting':
+                this.controllerStatusElement.textContent = 'CONNECTING...';
+                this.controllerStatusElement.className = 'status connecting';
+                break;
+            case 'connected':
+                this.controllerStatusElement.textContent = 'CONNECTED!';
+                this.controllerStatusElement.className = 'status connected';
+                break;
+            case 'disconnected':
+                this.controllerStatusElement.textContent = 'DISCONNECTED';
+                this.controllerStatusElement.className = 'status disconnected';
+                break;
+            case 'error':
+                this.controllerStatusElement.textContent = 'CONNECTION ERROR';
+                this.controllerStatusElement.className = 'status error';
+                break;
+            case 'reconnecting':
+                this.controllerStatusElement.textContent = 'RECONNECTING...';
+                this.controllerStatusElement.className = 'status reconnecting';
+                break;
+        }
+    }
+    
+    updateSensorStatus(status, errorInfo = null) {
+        if (!this.sensorStatusElement) return;
+        
+        switch (status) {
+            case 'ready':
+                this.sensorStatusElement.textContent = 'SENSOR READY';
+                this.sensorStatusElement.className = 'status ready';
+                break;
+            case 'active':
+                this.sensorStatusElement.textContent = 'SENSOR ACTIVE';
+                this.sensorStatusElement.className = 'status active';
+                break;
+            case 'error':
+                this.sensorStatusElement.textContent = 'SENSOR ERROR';
+                this.sensorStatusElement.className = 'status error';
+                break;
+            case 'permission_denied':
+                this.sensorStatusElement.textContent = 'PERMISSION DENIED';
+                this.sensorStatusElement.className = 'status error';
+                break;
+            case 'not_supported':
+                this.sensorStatusElement.textContent = 'NOT SUPPORTED';
+                this.sensorStatusElement.className = 'status error';
+                break;
+        }
+    }
+}
+
 // Initialize application
 document.addEventListener('DOMContentLoaded', () => {
+    // Check browser compatibility first
+    const compatibility = BrowserCompatibility.checkSupport();
+    console.log('Browser compatibility check:', compatibility);
+    
+    // Show compatibility warning if needed (non-blocking)
+    if (BrowserCompatibility.shouldShowCompatibilityWarning()) {
+        setTimeout(() => {
+            BrowserCompatibility.showCompatibilityWarning();
+        }, 2000); // Delay to allow UI to load first
+    }
+    
     const screenManager = new ScreenManager();
     const uiAnimations = new UIAnimations();
     
     // Make managers globally available for debugging
     window.screenManager = screenManager;
     window.uiAnimations = uiAnimations;
+    window.errorHandler = screenManager.errorHandler;
+    window.connectionStatusManager = screenManager.connectionStatusManager;
+    window.browserCompatibility = compatibility;
     
-    console.log('Situp Bird application initialized');
+    console.log('Situp Bird application initialized with enhanced cross-platform support');
 });
 
 // Handle window resize for responsive canvas

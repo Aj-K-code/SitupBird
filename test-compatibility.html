@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Platform Compatibility Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .supported { background: #d4edda; color: #155724; }
+        .not-supported { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+        }
+        button:hover { background: #0056b3; }
+        #test-results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Situp Bird - Cross-Platform Compatibility Test</h1>
+    
+    <div class="test-section">
+        <h2>Browser Feature Detection</h2>
+        <div id="feature-detection"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Device Information</h2>
+        <div id="device-info"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Touch & Interaction Tests</h2>
+        <button id="touch-test-btn">Test Touch Events</button>
+        <button id="vibration-test-btn">Test Vibration</button>
+        <div id="interaction-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Performance Test</h2>
+        <button id="performance-test-btn">Run Performance Test</button>
+        <div id="performance-results"></div>
+    </div>
+    
+    <div id="test-results"></div>
+
+    <script>
+        // Import the compatibility checker (simplified version)
+        class TestCompatibility {
+            static checkSupport() {
+                return {
+                    webSocket: !!window.WebSocket,
+                    deviceMotion: !!window.DeviceMotionEvent,
+                    canvas: !!document.createElement('canvas').getContext,
+                    webAudio: !!(window.AudioContext || window.webkitAudioContext),
+                    localStorage: !!window.localStorage,
+                    touchEvents: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+                    pointerEvents: !!window.PointerEvent,
+                    orientation: !!window.DeviceOrientationEvent,
+                    vibration: !!navigator.vibrate,
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+                    isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+                    isAndroid: /Android/.test(navigator.userAgent),
+                    cores: navigator.hardwareConcurrency || 'Unknown',
+                    memory: navigator.deviceMemory || 'Unknown',
+                    connection: navigator.connection?.effectiveType || 'Unknown',
+                    pixelRatio: window.devicePixelRatio || 1
+                };
+            }
+        }
+
+        function displayFeatureDetection() {
+            const support = TestCompatibility.checkSupport();
+            const container = document.getElementById('feature-detection');
+            
+            const features = [
+                { name: 'WebSocket', key: 'webSocket', critical: true },
+                { name: 'Device Motion', key: 'deviceMotion', critical: true },
+                { name: 'Canvas', key: 'canvas', critical: true },
+                { name: 'Web Audio', key: 'webAudio', critical: false },
+                { name: 'Local Storage', key: 'localStorage', critical: false },
+                { name: 'Touch Events', key: 'touchEvents', critical: false },
+                { name: 'Pointer Events', key: 'pointerEvents', critical: false },
+                { name: 'Device Orientation', key: 'orientation', critical: false },
+                { name: 'Vibration', key: 'vibration', critical: false }
+            ];
+            
+            let html = '';
+            features.forEach(feature => {
+                const supported = support[feature.key];
+                const statusClass = supported ? 'supported' : (feature.critical ? 'not-supported' : 'warning');
+                const statusText = supported ? 'Supported' : 'Not Supported';
+                
+                html += `
+                    <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                        <span>${feature.name}:</span>
+                        <span class="status ${statusClass}">${statusText}</span>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function displayDeviceInfo() {
+            const support = TestCompatibility.checkSupport();
+            const container = document.getElementById('device-info');
+            
+            const info = [
+                { name: 'Platform', value: support.platform },
+                { name: 'User Agent', value: support.userAgent },
+                { name: 'Mobile Device', value: support.isMobile ? 'Yes' : 'No' },
+                { name: 'iOS Device', value: support.isIOS ? 'Yes' : 'No' },
+                { name: 'Android Device', value: support.isAndroid ? 'Yes' : 'No' },
+                { name: 'CPU Cores', value: support.cores },
+                { name: 'Device Memory', value: support.memory + ' GB' },
+                { name: 'Connection Type', value: support.connection },
+                { name: 'Pixel Ratio', value: support.pixelRatio },
+                { name: 'Screen Size', value: `${window.screen.width}x${window.screen.height}` },
+                { name: 'Viewport Size', value: `${window.innerWidth}x${window.innerHeight}` }
+            ];
+            
+            let html = '';
+            info.forEach(item => {
+                html += `
+                    <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+                        <span>${item.name}:</span>
+                        <span><strong>${item.value}</strong></span>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function setupInteractionTests() {
+            const touchBtn = document.getElementById('touch-test-btn');
+            const vibrationBtn = document.getElementById('vibration-test-btn');
+            const results = document.getElementById('interaction-results');
+            
+            touchBtn.addEventListener('click', () => {
+                results.innerHTML = '<p>Click/touch events working! ✓</p>';
+            });
+            
+            touchBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                results.innerHTML = '<p>Touch events working! ✓</p>';
+            });
+            
+            vibrationBtn.addEventListener('click', () => {
+                if (navigator.vibrate) {
+                    navigator.vibrate(200);
+                    results.innerHTML = '<p>Vibration triggered! ✓</p>';
+                } else {
+                    results.innerHTML = '<p>Vibration not supported ✗</p>';
+                }
+            });
+        }
+
+        function setupPerformanceTest() {
+            const btn = document.getElementById('performance-test-btn');
+            const results = document.getElementById('performance-results');
+            
+            btn.addEventListener('click', () => {
+                results.innerHTML = '<p>Running performance test...</p>';
+                
+                const startTime = performance.now();
+                let frameCount = 0;
+                const testDuration = 2000; // 2 seconds
+                
+                function testFrame() {
+                    frameCount++;
+                    const elapsed = performance.now() - startTime;
+                    
+                    if (elapsed < testDuration) {
+                        requestAnimationFrame(testFrame);
+                    } else {
+                        const fps = Math.round((frameCount / elapsed) * 1000);
+                        let performance_level = 'High';
+                        
+                        if (fps < 30) performance_level = 'Low';
+                        else if (fps < 45) performance_level = 'Medium';
+                        
+                        results.innerHTML = `
+                            <p><strong>Performance Test Results:</strong></p>
+                            <p>Average FPS: ${fps}</p>
+                            <p>Performance Level: ${performance_level}</p>
+                            <p>Frame Count: ${frameCount}</p>
+                            <p>Test Duration: ${Math.round(elapsed)}ms</p>
+                        `;
+                    }
+                }
+                
+                requestAnimationFrame(testFrame);
+            });
+        }
+
+        // Initialize tests
+        document.addEventListener('DOMContentLoaded', () => {
+            displayFeatureDetection();
+            displayDeviceInfo();
+            setupInteractionTests();
+            setupPerformanceTest();
+            
+            // Overall compatibility assessment
+            const support = TestCompatibility.checkSupport();
+            const criticalFeatures = ['webSocket', 'deviceMotion', 'canvas'];
+            const unsupported = criticalFeatures.filter(feature => !support[feature]);
+            
+            const resultsDiv = document.getElementById('test-results');
+            if (unsupported.length === 0) {
+                resultsDiv.innerHTML = `
+                    <h3 style="color: green;">✓ Full Compatibility</h3>
+                    <p>Your browser/device supports all required features for Situp Bird!</p>
+                `;
+            } else {
+                resultsDiv.innerHTML = `
+                    <h3 style="color: red;">⚠ Limited Compatibility</h3>
+                    <p>Missing critical features: ${unsupported.join(', ')}</p>
+                    <p>The game may not work properly on this browser/device.</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
