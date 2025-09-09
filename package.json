@@ -8,13 +8,22 @@
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
     "monitor": "node monitor.js",
-    "test": "echo \"No tests specified\" && exit 0",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
     "build": "echo \"No build step required for server\" && exit 0",
     "health": "curl -f http://localhost:${PORT:-8080}/health || exit 1",
     "deploy:render": "echo 'Push to main branch to deploy to Render'",
     "deploy:frontend": "echo 'Push to main branch to deploy frontend to GitHub Pages'"
   },
   "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "jsdom": "^23.0.0",
+    "@vitest/ui": "^1.0.0",
     "ws": "^8.14.2"
   },
   "engines": {

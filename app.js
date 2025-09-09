@@ -893,17 +893,24 @@ class SensorManager {
         // Use smoothed Y value for more stable motion detection
         const smoothedY = this.getSmoothedReading();
         
-        // Normalize position to 0-1 range using smoothed value
+        // Normalize position to 0-1 range using smoothed value with proper clamping
         const range = maxY - minY;
-        const normalizedPosition = range > 0 ? Math.max(0, Math.min(1, (smoothedY - minY) / range)) : 0.5;
+        let normalizedPosition = 0.5; // Default middle position
+        
+        if (range > 0) {
+            // Ensure proper clamping between 0 and 1
+            const rawPosition = (smoothedY - minY) / range;
+            normalizedPosition = Math.max(0, Math.min(1, rawPosition));
+        }
         
         // Calculate motion intensity (rate of change)
         const motionIntensity = this.calculateMotionIntensity();
         
         // Enhanced situp motion detection with calibrated thresholds
-        const downThreshold = 0.2 + (threshold * 0.1); // Adjustable based on calibration
-        const upThreshold = 0.8 - (threshold * 0.1);   // Adjustable based on calibration
-        const motionThreshold = 0.3; // Minimum motion intensity for valid movement
+        // Fine-tuned for better responsiveness and accuracy
+        const downThreshold = 0.25 + (threshold * 0.05); // More sensitive down detection
+        const upThreshold = 0.75 - (threshold * 0.05);   // More sensitive up detection  
+        const motionThreshold = 0.2; // Lower threshold for better responsiveness
         
         const isCurrentlyDown = normalizedPosition < downThreshold;
         const isCurrentlyUp = normalizedPosition > upThreshold;
@@ -1273,15 +1280,16 @@ class GameEngine {
             height: 40,
             velocity: 0,
             gravity: 0.4,
-            flapStrength: -8,
+            flapStrength: -4.5,
+            maxVelocity: 10,
             rotation: 0
         };
         
-        // Pipes array and configuration
+        // Pipes array and configuration - Balanced for fitness gaming
         this.pipes = [];
         this.pipeWidth = 80;
-        this.pipeGap = 200;
-        this.pipeSpeed = 2;
+        this.pipeGap = 220; // Slightly larger gap for better accessibility
+        this.pipeSpeed = 1.8; // Slightly slower for better motion tracking
         this.pipeSpawnInterval = 120; // frames between pipe spawns
         this.lastPipeFrame = 0;
         
@@ -1292,12 +1300,12 @@ class GameEngine {
             max: 0.8  // 80% from top
         };
         
-        // Enhanced pipe generation settings
+        // Enhanced pipe generation settings - Fine-tuned for better gameplay
         this.pipeVariation = {
-            minInterval: 90,  // Minimum frames between pipes
-            maxInterval: 150, // Maximum frames between pipes
-            gapSizeVariation: 0.2, // ±20% gap size variation
-            positionSmoothing: 0.3 // Smoothing factor for gap position changes
+            minInterval: 100,  // Slightly longer minimum for easier gameplay
+            maxInterval: 140,  // Reduced maximum for more consistent challenge
+            gapSizeVariation: 0.15, // Reduced variation for more predictable gaps
+            positionSmoothing: 0.4 // Increased smoothing for smoother gap transitions
         };
         
         // Game boundaries
@@ -1306,6 +1314,9 @@ class GameEngine {
         
         // Controller connection state
         this.controllerConnected = false;
+        
+        // Latest sensor data for physics updates
+        this.latestSensorData = {};
         
         // Audio system for sound effects
         this.audioContext = null;
@@ -1511,6 +1522,9 @@ class GameEngine {
         // Store current sensor data for dynamic pipe gap positioning
         this.currentSensorData = sensorData;
         
+        // Store latest sensor data for bird physics updates
+        this.latestSensorData = sensorData;
+        
         // Use sensor data to influence future pipe spawning
         if (sensorData && sensorData.processed && sensorData.processed.calibrated) {
             // Update pipe generation parameters based on current user position
@@ -1622,8 +1636,11 @@ class GameEngine {
         // Frame rate independent physics
         const frameMultiplier = deltaTime / 16.67; // Normalize to 60fps
         
-        // Update bird physics
-        this.updateBird();
+        // Update bird physics with latest sensor data
+        this.updateBird(this.latestSensorData);
+        
+        // Clear sensor data after processing to prevent repeated flaps
+        this.latestSensorData = {};
         
         // Spawn pipes
         this.spawnPipes();
@@ -1638,9 +1655,18 @@ class GameEngine {
         this.updateScore();
     }
     
-    updateBird() {
-        // Apply gravity
+    updateBird(sensorData = {}) {
+        // Apply gravity first
         this.bird.velocity += this.bird.gravity;
+        
+        // Handle flap input from sensor data (after gravity to get correct final velocity)
+        if (sensorData.shouldFlap || (sensorData.processed && sensorData.processed.shouldFlap)) {
+            this.bird.velocity = this.bird.flapStrength;
+            this.playFlapSound();
+        }
+        
+        // Limit velocity to prevent excessive speed
+        this.bird.velocity = Math.max(-this.bird.maxVelocity, Math.min(this.bird.maxVelocity, this.bird.velocity));
         
         // Update position
         this.bird.y += this.bird.velocity;
@@ -1652,6 +1678,12 @@ class GameEngine {
         if (this.bird.y < this.ceilingHeight) {
             this.bird.y = this.ceilingHeight;
             this.bird.velocity = 0;
+        }
+        
+        // Check for ground collision
+        if (this.bird.y + this.bird.height > this.canvas.height - this.groundHeight) {
+            this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
+            this.gameOver();
         }
     }
     
@@ -1665,28 +1697,33 @@ class GameEngine {
             // Calculate gap position based on calibration data or use default range
             let gapPosition;
             
-            if (this.calibrationData && this.calibrationData.minY !== null && this.calibrationData.maxY !== null) {
-                // Use calibration-based positioning with real-time sensor influence
-                const motionRange = this.calibrationData.maxY - this.calibrationData.minY;
-                const normalizedRange = Math.max(0.3, Math.min(1.0, motionRange / 8.0)); // Normalize to reasonable range
-                
-                // Base gap position with random variation
-                let basePosition = 0.5 + (Math.random() - 0.5) * 0.6;
-                
-                // Influence gap position based on user's recent motion (if available)
-                if (this.nextGapBias !== undefined) {
-                    // Blend random positioning with user's motion pattern
-                    // This makes gaps appear in areas the user can more easily reach
-                    const motionInfluence = 0.3; // 30% influence from user motion
-                    basePosition = (basePosition * (1 - motionInfluence)) + (this.nextGapBias * motionInfluence);
+            if (this.calibrationData && (this.calibrationData.currentPosition !== undefined || (this.calibrationData.minY !== null && this.calibrationData.maxY !== null))) {
+                // Support for test interface with currentPosition
+                if (this.calibrationData.currentPosition !== undefined) {
+                    gapPosition = Math.max(0.15, Math.min(0.85, this.calibrationData.currentPosition));
+                } else {
+                    // Use calibration-based positioning with real-time sensor influence
+                    const motionRange = this.calibrationData.maxY - this.calibrationData.minY;
+                    const normalizedRange = Math.max(0.3, Math.min(1.0, motionRange / 8.0)); // Normalize to reasonable range
                     
-                    // Add some smoothing to prevent erratic gap positioning
-                    if (this.lastGapPosition !== undefined) {
-                        basePosition = (basePosition * 0.7) + (this.lastGapPosition * 0.3);
+                    // Base gap position with random variation
+                    let basePosition = 0.5 + (Math.random() - 0.5) * 0.6;
+                    
+                    // Influence gap position based on user's recent motion (if available)
+                    if (this.nextGapBias !== undefined) {
+                        // Blend random positioning with user's motion pattern
+                        // This makes gaps appear in areas the user can more easily reach
+                        const motionInfluence = 0.3; // 30% influence from user motion
+                        basePosition = (basePosition * (1 - motionInfluence)) + (this.nextGapBias * motionInfluence);
+                        
+                        // Add some smoothing to prevent erratic gap positioning
+                        if (this.lastGapPosition !== undefined) {
+                            basePosition = (basePosition * 0.7) + (this.lastGapPosition * 0.3);
+                        }
                     }
+                    
+                    gapPosition = Math.max(0.15, Math.min(0.85, basePosition));
                 }
-                
-                gapPosition = Math.max(0.15, Math.min(0.85, basePosition));
                 this.lastGapPosition = gapPosition;
             } else {
                 // Use default random positioning when no calibration data available
@@ -1730,6 +1767,22 @@ class GameEngine {
         for (let i = this.pipes.length - 1; i >= 0; i--) {
             const pipe = this.pipes[i];
             
+            // Check for scoring before moving pipe
+            if (!pipe.scored && pipe.x + pipe.width < this.bird.x) {
+                pipe.scored = true;
+                this.score++;
+                
+                // Play score sound effect
+                this.playScoreSound();
+                
+                // Update score display
+                if (this.onScoreUpdate) {
+                    this.onScoreUpdate(this.score);
+                }
+                
+                console.log(`Score! New score: ${this.score}`);
+            }
+            
             // Move pipe left at current speed
             pipe.x -= this.pipeSpeed;
             
@@ -1753,23 +1806,8 @@ class GameEngine {
     }
     
     updateScore() {
-        // Check if bird passed through any pipes
-        for (const pipe of this.pipes) {
-            if (!pipe.scored && pipe.x + pipe.width < this.bird.x) {
-                pipe.scored = true;
-                this.score++;
-                
-                // Play score sound effect
-                this.playScoreSound();
-                
-                // Update score display
-                if (this.onScoreUpdate) {
-                    this.onScoreUpdate(this.score);
-                }
-                
-                console.log(`Score increased to ${this.score}`);
-            }
-        }
+        // Scoring is now handled in updatePipes() to avoid duplication
+        // This method is kept for compatibility but doesn't do scoring anymore
     }
     
     checkCollisions() {
@@ -2559,13 +2597,8 @@ class ScreenManager {
         
         // Send sensor data to game engine
         if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
-            // Update game engine with sensor data for dynamic pipe positioning
+            // Update game engine with sensor data for dynamic pipe positioning and physics
             this.gameEngine.updateSensorData(sensorData);
-            
-            // Trigger flap if motion indicates situp completion
-            if (sensorData.processed.shouldFlap) {
-                this.gameEngine.flap();
-            }
         }
     }
 

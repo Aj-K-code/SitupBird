@@ -56,7 +56,7 @@ The server includes a health check endpoint at `/health` that Render can use to 
 2. **Update WebSocket URL**
    - In `app.js`, update the `renderUrl` variable with your actual Render deployment URL:
    ```javascript
-   const renderUrl = 'your-app-name.onrender.com';
+   const renderUrl = 'situp-bird-server.onrender.com'; // Replace with your actual URL
    ```
 
 3. **Enable GitHub Pages**
