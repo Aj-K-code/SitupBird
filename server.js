@@ -369,8 +369,15 @@ class SignalingServer {
           
         case 'SENSOR_DATA':
         case 'CALIBRATION_DATA':
+          // Enhanced debugging for sensor data routing
+          if (message.type === 'SENSOR_DATA') {
+            console.log(`📡 Routing ${message.type} from ${socket.clientIP} in room ${socket.roomCode}`);
+          }
           // Route these messages to the paired device
-          this.roomManager.routeMessage(socket, message);
+          const routeSuccess = this.roomManager.routeMessage(socket, message);
+          if (!routeSuccess && message.type === 'SENSOR_DATA') {
+            console.warn(`❌ Failed to route ${message.type} in room ${socket.roomCode}`);
+          }
           break;
           
         default:

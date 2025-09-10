@@ -2646,9 +2646,12 @@ class ScreenManager {
     }
 
     handleGameSensorData(sensorData) {
+        // Enhanced debugging for sensor data reception
+        console.log('🎮 Game received sensor data:', sensorData);
+        
         // Log enhanced sensor data for debugging
         if (sensorData.processed && sensorData.processed.calibrated) {
-            console.log('Game received calibrated sensor data:', {
+            console.log('✅ Game received calibrated sensor data:', {
                 position: sensorData.processed.normalizedPosition.toFixed(2),
                 shouldFlap: sensorData.processed.shouldFlap,
                 isDown: sensorData.processed.isDown,
@@ -3133,10 +3136,21 @@ class ScreenManager {
         
         // Send sensor data to game if connected (real-time transmission)
         if (this.controllerClient && this.controllerClient.connectionStatus === 'connected') {
+            console.log('📡 Sending sensor data to game:', {
+                position: sensorData.processed?.normalizedPosition?.toFixed(2),
+                shouldFlap: sensorData.processed?.shouldFlap,
+                calibrated: sensorData.processed?.calibrated
+            });
+            
             const success = this.controllerClient.sendSensorData(sensorData);
             if (!success) {
+                console.error('❌ Failed to send sensor data');
                 this.addDebugMessage('⚠️ Failed to send sensor data - connection issue');
+            } else {
+                console.log('✅ Sensor data sent successfully');
             }
+        } else {
+            console.log('⚠️ Controller not connected, cannot send sensor data');
         }
     }
     
