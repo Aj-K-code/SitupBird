@@ -155,7 +155,7 @@ class WebSocketClient {
         // For GitHub Pages deployment - connect to Render backend
         if (host.includes('github.io') || host.includes('pages.dev')) {
             // Replace with your actual Render deployment URL
-            const renderUrl = 'situp-bird-server.onrender.com'; // Update this with actual Render URL
+            const renderUrl = 'situpbirdserver.onrender.com'; // Your actual Render URL
             return `wss://${renderUrl}`;
         }
         
