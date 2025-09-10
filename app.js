@@ -2394,54 +2394,71 @@ class ScreenManager {
         });
 
         // Controller screen functionality
-        document.getElementById('join-room-btn').addEventListener('click', () => {
+        addMobileClickHandler('join-room-btn', () => {
+            console.log('🔗 Join Room button clicked');
             this.resumeAudioContextOnUserInteraction();
             this.handleJoinRoom();
         });
 
         // Room code input validation
         const roomCodeInput = document.getElementById('room-code-input');
-        roomCodeInput.addEventListener('input', (e) => {
-            e.target.value = e.target.value.replace(/[^0-9]/g, '').substring(0, 4);
-        });
+        if (roomCodeInput) {
+            roomCodeInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, '').substring(0, 4);
+            });
+            console.log('✅ Room code input validation added');
+        }
 
         // Calibration screen functionality
-        document.getElementById('start-calibration-btn').addEventListener('click', () => {
+        addMobileClickHandler('start-calibration-btn', () => {
+            console.log('🎯 Start Calibration button clicked');
             this.resumeAudioContextOnUserInteraction();
             this.startCalibrationProcess();
         });
 
-        document.getElementById('next-calibration-btn').addEventListener('click', () => {
+        addMobileClickHandler('next-calibration-btn', () => {
+            console.log('➡️ Next Calibration button clicked');
             this.resumeAudioContextOnUserInteraction();
             this.nextCalibrationStep();
         });
 
-        document.getElementById('finish-calibration-btn').addEventListener('click', () => {
+        addMobileClickHandler('finish-calibration-btn', () => {
+            console.log('✅ Finish Calibration button clicked');
             this.resumeAudioContextOnUserInteraction();
             this.finishCalibration();
         });
 
-        document.getElementById('recalibrate-btn').addEventListener('click', () => {
+        addMobileClickHandler('recalibrate-btn', () => {
+            console.log('🔄 Recalibrate button clicked');
             this.resumeAudioContextOnUserInteraction();
             this.restartCalibration();
         });
 
-        // Manual adjustment sliders
-        document.getElementById('min-adjustment').addEventListener('input', (e) => {
-            this.updateManualAdjustment('min', parseFloat(e.target.value));
-        });
-
-        document.getElementById('max-adjustment').addEventListener('input', (e) => {
-            this.updateManualAdjustment('max', parseFloat(e.target.value));
-        });
+        // Manual adjustment sliders (these work fine with regular input events)
+        const minAdjustment = document.getElementById('min-adjustment');
+        const maxAdjustment = document.getElementById('max-adjustment');
+        
+        if (minAdjustment) {
+            minAdjustment.addEventListener('input', (e) => {
+                this.updateManualAdjustment('min', parseFloat(e.target.value));
+            });
+        }
+        
+        if (maxAdjustment) {
+            maxAdjustment.addEventListener('input', (e) => {
+                this.updateManualAdjustment('max', parseFloat(e.target.value));
+            });
+        }
 
         // Direct sensor test button
-        document.getElementById('test-sensors-btn').addEventListener('click', () => {
+        addMobileClickHandler('test-sensors-btn', () => {
+            console.log('🧪 Test Sensors button clicked');
             this.testSensorsDirectly();
         });
 
         // Error modal
-        document.getElementById('error-ok-btn').addEventListener('click', () => {
+        addMobileClickHandler('error-ok-btn', () => {
+            console.log('✅ Error OK button clicked');
             this.hideModal('error-modal');
         });
     }
