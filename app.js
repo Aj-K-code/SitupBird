@@ -2394,11 +2394,46 @@ class ScreenManager {
         });
 
         // Controller screen functionality
-        addMobileClickHandler('join-room-btn', () => {
-            console.log('🔗 Join Room button clicked');
-            this.resumeAudioContextOnUserInteraction();
-            this.handleJoinRoom();
-        });
+        // Enhanced mobile debugging for join room button
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        if (joinRoomBtn) {
+            // Multiple event types for maximum mobile compatibility
+            const joinRoomHandler = (e) => {
+                try {
+                    console.log('🔗 Join Room button clicked - Event type:', e.type);
+                    console.log('📱 User agent:', navigator.userAgent);
+                    console.log('📍 Room code input value:', document.getElementById('room-code-input')?.value);
+                    
+                    // Prevent default and stop propagation
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Visual feedback
+                    joinRoomBtn.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        joinRoomBtn.style.transform = '';
+                    }, 150);
+                    
+                    this.resumeAudioContextOnUserInteraction();
+                    this.handleJoinRoom();
+                    
+                } catch (error) {
+                    console.error('❌ Error in join room handler:', error);
+                    alert('Error: ' + error.message); // Fallback error display
+                }
+            };
+            
+            // Add multiple event listeners for maximum compatibility
+            joinRoomBtn.addEventListener('click', joinRoomHandler);
+            joinRoomBtn.addEventListener('touchend', joinRoomHandler);
+            joinRoomBtn.addEventListener('touchstart', (e) => {
+                console.log('👆 Join button touch started');
+            });
+            
+            console.log('✅ Join room button events added');
+        } else {
+            console.error('❌ Join room button not found!');
+        }
 
         // Room code input validation
         const roomCodeInput = document.getElementById('room-code-input');
@@ -3141,28 +3176,52 @@ class ScreenManager {
     }
 
     async handleJoinRoom() {
-        const roomCode = document.getElementById('room-code-input').value;
-        
-        if (roomCode.length !== 4) {
-            this.showError('Please enter a 4-digit room code');
-            return;
-        }
-        
-        // Show loading
-        this.showLoading();
-        
         try {
+            console.log('🚀 handleJoinRoom called');
+            const roomCodeInput = document.getElementById('room-code-input');
+            const roomCode = roomCodeInput ? roomCodeInput.value : '';
+            
+            console.log('📝 Room code:', roomCode);
+            
+            if (window.mobileDebug) {
+                window.mobileDebug.log('Join room attempt: ' + roomCode);
+            }
+            
+            if (roomCode.length !== 4) {
+                console.log('❌ Invalid room code length:', roomCode.length);
+                this.showError('Please enter a 4-digit room code');
+                return;
+            }
+            
+            // Show loading
+            console.log('⏳ Showing loading...');
+            this.showLoading();
+            
             // Create and setup controller client
+            console.log('🔧 Creating controller client...');
             this.controllerClient = new ControllerClient();
             this.setupControllerClientHandlers();
             
+            console.log('🔗 Attempting to join room...');
             const success = await this.controllerClient.joinRoom(roomCode);
+            
+            console.log('✅ Join room result:', success);
             this.hideLoading();
             
             if (!success) {
+                console.log('❌ Join room failed');
                 this.showError('Failed to join room. Please try again.');
+            } else {
+                console.log('🎉 Successfully joined room!');
+                if (window.mobileDebug) {
+                    window.mobileDebug.log('Successfully joined room: ' + roomCode);
+                }
             }
         } catch (error) {
+            console.error('💥 handleJoinRoom error:', error);
+            if (window.mobileDebug) {
+                window.mobileDebug.error('Join room error: ' + error.message);
+            }
             this.hideLoading();
             console.error('Controller client error:', error);
             
@@ -4190,16 +4249,36 @@ document.addEventListener('DOMContentLoaded', () => {
         
         console.log('🎉 App initialization complete!');
         
+        // Add mobile debug panel for easier debugging
+        if (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            window.mobileDebug = {
+                log: (message) => {
+                    console.log(message);
+                    // Also show in a debug panel if needed
+                    const debugPanel = document.getElementById('mobile-debug-panel');
+                    if (debugPanel) {
+                        debugPanel.innerHTML += '<div>' + message + '</div>';
+                        debugPanel.scrollTop = debugPanel.scrollHeight;
+                    }
+                },
+                error: (message) => {
+                    console.error(message);
+                    alert('Debug Error: ' + message); // Immediate feedback on mobile
+                }
+            };
+            console.log('📱 Mobile debug system enabled');
+        }
+        
     } catch (error) {
         console.error('❌ App initialization failed:', error);
         
-        // Fallback: try to show a basic error message
+        // Enhanced mobile error display
         const errorDiv = document.createElement('div');
         errorDiv.style.cssText = `
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 20px;
+            left: 20px;
+            right: 20px;
             background: #ff0055;
             color: white;
             padding: 20px;
@@ -4207,11 +4286,15 @@ document.addEventListener('DOMContentLoaded', () => {
             font-family: Arial, sans-serif;
             text-align: center;
             z-index: 9999;
+            max-height: 300px;
+            overflow-y: auto;
         `;
         errorDiv.innerHTML = `
             <h3>App Failed to Load</h3>
             <p>Please refresh the page and try again.</p>
-            <p><small>Error: ${error.message}</small></p>
+            <p><strong>Error:</strong> ${error.message}</p>
+            <p><strong>Stack:</strong> ${error.stack?.substring(0, 200)}...</p>
+            <button onclick="location.reload()" style="margin-top: 10px; padding: 10px; background: white; color: #ff0055; border: none; border-radius: 5px;">Refresh Page</button>
         `;
         document.body.appendChild(errorDiv);
     }
