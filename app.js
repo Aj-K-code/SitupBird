@@ -2337,15 +2337,37 @@ class ScreenManager {
     }
 
     initializeEventListeners() {
+        console.log('🎯 Setting up event listeners...');
+        
+        // Helper function to add both click and touch events for mobile compatibility
+        const addMobileClickHandler = (elementId, handler) => {
+            const element = document.getElementById(elementId);
+            if (!element) {
+                console.error(`❌ Element not found: ${elementId}`);
+                return;
+            }
+            
+            // Add both click and touchend events for better mobile support
+            element.addEventListener('click', handler);
+            element.addEventListener('touchend', (e) => {
+                e.preventDefault(); // Prevent double-firing
+                handler(e);
+            });
+            
+            console.log(`✅ Event listeners added for: ${elementId}`);
+        };
+        
         // Selection screen buttons
-        document.getElementById('start-game-btn').addEventListener('click', async () => {
+        addMobileClickHandler('start-game-btn', async (e) => {
+            console.log('🎮 Start Game button clicked');
             // Resume audio context on first user interaction
             this.resumeAudioContextOnUserInteraction();
             this.showScreen('calibration-screen');
             await this.initializeCalibrationScreen();
         });
 
-        document.getElementById('use-controller-btn').addEventListener('click', () => {
+        addMobileClickHandler('use-controller-btn', (e) => {
+            console.log('📱 Use Controller button clicked');
             // Resume audio context on first user interaction
             this.resumeAudioContextOnUserInteraction();
             this.showScreen('controller-screen');
@@ -2353,17 +2375,20 @@ class ScreenManager {
         });
 
         // Back to menu buttons
-        document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+        addMobileClickHandler('back-to-menu-btn', () => {
+            console.log('🔙 Back to menu from game');
             this.cleanupGameClient();
             this.showScreen('selection-screen');
         });
 
-        document.getElementById('controller-back-btn').addEventListener('click', () => {
+        addMobileClickHandler('controller-back-btn', () => {
+            console.log('🔙 Back to menu from controller');
             this.cleanupControllerClient();
             this.showScreen('selection-screen');
         });
 
-        document.getElementById('calibration-back-btn').addEventListener('click', () => {
+        addMobileClickHandler('calibration-back-btn', () => {
+            console.log('🔙 Back to menu from calibration');
             this.cleanupCalibration();
             this.showScreen('selection-screen');
         });
@@ -4117,26 +4142,62 @@ class ConnectionStatusManager {
 
 // Initialize application
 document.addEventListener('DOMContentLoaded', () => {
-    // Check browser compatibility first
-    const compatibility = BrowserCompatibility.checkSupport();
-    console.log('Browser compatibility check:', compatibility);
-    
-    // Show compatibility warning if needed (non-blocking)
-    if (BrowserCompatibility.shouldShowCompatibilityWarning()) {
-        setTimeout(() => {
-            BrowserCompatibility.showCompatibilityWarning();
-        }, 2000); // Delay to allow UI to load first
+    try {
+        console.log('🚀 Initializing Situp Bird app...');
+        
+        // Check browser compatibility first
+        const compatibility = BrowserCompatibility.checkSupport();
+        console.log('Browser compatibility check:', compatibility);
+        
+        // Show compatibility warning if needed (non-blocking)
+        if (BrowserCompatibility.shouldShowCompatibilityWarning()) {
+            setTimeout(() => {
+                BrowserCompatibility.showCompatibilityWarning();
+            }, 2000); // Delay to allow UI to load first
+        }
+        
+        console.log('📱 Creating ScreenManager...');
+        const screenManager = new ScreenManager();
+        console.log('✅ ScreenManager created successfully');
+        
+        console.log('🎨 Creating UIAnimations...');
+        const uiAnimations = new UIAnimations();
+        console.log('✅ UIAnimations created successfully');
+        
+        // Make managers globally available for debugging
+        window.screenManager = screenManager;
+        window.uiAnimations = uiAnimations;
+        window.errorHandler = screenManager.errorHandler;
+        window.connectionStatusManager = screenManager.connectionStatusManager;
+        window.browserCompatibility = compatibility;
+        
+        console.log('🎉 App initialization complete!');
+        
+    } catch (error) {
+        console.error('❌ App initialization failed:', error);
+        
+        // Fallback: try to show a basic error message
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff0055;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            z-index: 9999;
+        `;
+        errorDiv.innerHTML = `
+            <h3>App Failed to Load</h3>
+            <p>Please refresh the page and try again.</p>
+            <p><small>Error: ${error.message}</small></p>
+        `;
+        document.body.appendChild(errorDiv);
     }
-    
-    const screenManager = new ScreenManager();
-    const uiAnimations = new UIAnimations();
-    
-    // Make managers globally available for debugging
-    window.screenManager = screenManager;
-    window.uiAnimations = uiAnimations;
-    window.errorHandler = screenManager.errorHandler;
-    window.connectionStatusManager = screenManager.connectionStatusManager;
-    window.browserCompatibility = compatibility;
     
     console.log('Situp Bird application initialized with enhanced cross-platform support');
 });
