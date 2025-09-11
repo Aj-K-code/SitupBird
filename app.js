@@ -858,9 +858,13 @@ class SensorManager {
                     console.log('🎯 Auto-completing calibration with range:', range);
                     this.isCalibrating = false;
                     
-                    // Send calibration data to game
-                    if (window.screenManager && window.screenManager.controllerClient) {
-                        window.screenManager.controllerClient.sendCalibrationData(this.calibrationData);
+                    // Send calibration data to game (laptop)
+                    if (window.screenManager && window.screenManager.gameClient) {
+                        window.screenManager.gameClient.sendMessage({
+                            type: 'CALIBRATION_DATA',
+                            code: window.screenManager.gameClient.roomCode,
+                            payload: this.calibrationData
+                        });
                     }
                     
                     // Update status
@@ -3103,6 +3107,23 @@ class ScreenManager {
                 this.handleControllerSensorError(errorInfo);
             };
             
+            // Setup calibration completion handler
+            this.controllerSensorManager.onCalibrationUpdate = (currentY, calibrationData) => {
+                // Check if calibration is complete (auto-completed)
+                if (!this.controllerSensorManager.isCalibrating && 
+                    calibrationData.minY !== null && 
+                    calibrationData.maxY !== null) {
+                    const range = calibrationData.maxY - calibrationData.minY;
+                    if (range > 1.0) {
+                        // Send calibration data to game when auto-completed
+                        if (this.controllerClient && this.controllerClient.connectionStatus === 'connected') {
+                            console.log('📡 Auto-sending calibration data to game:', calibrationData);
+                            this.controllerClient.sendCalibrationData(calibrationData);
+                        }
+                    }
+                }
+            };
+            
             document.getElementById('sensor-status').textContent = 'REQUESTING PERMISSIONS...';
             this.addDebugMessage('Requesting permissions...');
             
@@ -3916,18 +3937,15 @@ class ScreenManager {
         this.showScreen('game-screen');
         this.initializeGameCanvas();
         
-        // Send calibration data to any connected controllers
+        // Send calibration data to any connected game client (laptop)
         if (this.gameClient && this.gameClient.roomCode) {
-            // If controller is already connected, send calibration data immediately
-            const connectedControllers = document.getElementById('connection-status').textContent.includes('CONNECTED');
-            if (connectedControllers) {
-                this.gameClient.sendMessage({
-                    type: 'CALIBRATION_DATA',
-                    code: this.gameClient.roomCode,
-                    payload: calibrationData
-                });
-                console.log('Sent calibration data to controller:', calibrationData);
-            }
+            // Send calibration data to the game client (laptop)
+            this.gameClient.sendMessage({
+                type: 'CALIBRATION_DATA',
+                code: this.gameClient.roomCode,
+                payload: calibrationData
+            });
+            console.log('Sent calibration data to game client (laptop):', calibrationData);
         }
     }
 
