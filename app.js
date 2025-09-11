@@ -1550,7 +1550,8 @@ class GameEngine {
     
     setCalibrationData(calibrationData) {
         this.calibrationData = calibrationData;
-        console.log('GameEngine: Calibration data set:', calibrationData);
+        console.log('🎮 GameEngine: Calibration data set:', calibrationData);
+        console.log('📏 Calibrated range: minY=', calibrationData.minY, 'maxY=', calibrationData.maxY, 'range=', (calibrationData.maxY - calibrationData.minY));
     }
     
     updateSensorData(sensorData) {
@@ -1749,8 +1750,10 @@ class GameEngine {
                     gapPosition = Math.max(0.15, Math.min(0.85, this.calibrationData.currentPosition));
                 } else {
                     // Use calibration-based positioning with real-time sensor influence
-                    const motionRange = this.calibrationData.maxY - this.calibrationData.minY;
-                    const normalizedRange = Math.max(0.3, Math.min(1.0, motionRange / 8.0)); // Normalize to reasonable range
+                    // Calculate the actual calibrated range
+                    const minY = this.calibrationData.minY;
+                    const maxY = this.calibrationData.maxY;
+                    const range = maxY - minY;
                     
                     // Enhanced varied positioning even with calibration
                     const rand = Math.random();
@@ -1758,13 +1761,24 @@ class GameEngine {
                     
                     if (rand < 0.25) {
                         // 25% chance: Force high position (challenge sitting up)
-                        basePosition = 0.15 + Math.random() * 0.25;
+                        // Use the top 25% of the calibrated range
+                        const topRangeMin = minY + range * 0.75;
+                        const topRangeMax = maxY;
+                        basePosition = topRangeMin + Math.random() * (topRangeMax - topRangeMin);
+                        // Normalize to 0-1 range for gap positioning
+                        basePosition = (basePosition - minY) / range;
                     } else if (rand < 0.5) {
                         // 25% chance: Force low position (challenge lying down)
-                        basePosition = 0.60 + Math.random() * 0.25;
+                        // Use the bottom 25% of the calibrated range
+                        const bottomRangeMin = minY;
+                        const bottomRangeMax = minY + range * 0.25;
+                        basePosition = bottomRangeMin + Math.random() * (bottomRangeMax - bottomRangeMin);
+                        // Normalize to 0-1 range for gap positioning
+                        basePosition = (basePosition - minY) / range;
                     } else {
                         // 50% chance: Use sensor-influenced positioning
-                        basePosition = 0.5 + (Math.random() - 0.5) * 0.4;
+                        // Distribute across the full calibrated range
+                        basePosition = Math.random();
                     }
                     
                     // Influence gap position based on user's recent motion (if available)
@@ -1780,6 +1794,7 @@ class GameEngine {
                         }
                     }
                     
+                    // Clamp to reasonable range (15-85% of screen)
                     gapPosition = Math.max(0.15, Math.min(0.85, basePosition));
                 }
                 this.lastGapPosition = gapPosition;
