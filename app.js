@@ -1700,7 +1700,21 @@ class GameEngine {
         // NEW: Position-based control instead of flap-based
         // Bird position directly follows your body position - perfect for core exercise!
         
-        if (sensorData.processed && sensorData.processed.calibrated) {
+        if (this.gameState === 'over') {
+            // When game is over, let bird fall naturally with gravity
+            this.bird.velocity += this.bird.gravity;
+            this.bird.velocity = Math.min(this.bird.velocity, this.bird.maxVelocity);
+            this.bird.y += this.bird.velocity;
+            
+            // Update rotation for falling effect
+            this.bird.rotation += 0.05;
+            
+            // Keep bird within canvas bounds for rendering
+            if (this.bird.y > this.canvas.height + 100) {
+                // Bird is well off screen, no need to update further
+                return;
+            }
+        } else if (sensorData.processed && sensorData.processed.calibrated) {
             // Map normalized position (0-1) to bird Y position
             // 0 = lying down = bottom of screen, 1 = sitting up = top of screen
             const screenHeight = this.canvas.height - this.groundHeight - this.bird.height;
@@ -1728,13 +1742,15 @@ class GameEngine {
         // Update rotation based on movement direction
         this.bird.rotation = Math.max(-0.3, Math.min(0.3, this.bird.velocity * 0.03));
         
-        // Keep bird within bounds (no death, just boundaries)
-        if (this.bird.y < this.ceilingHeight) {
-            this.bird.y = this.ceilingHeight;
-        }
-        
-        if (this.bird.y + this.bird.height > this.canvas.height - this.groundHeight) {
-            this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
+        // Keep bird within bounds (no death, just boundaries) - only for non-game-over states
+        if (this.gameState !== 'over') {
+            if (this.bird.y < this.ceilingHeight) {
+                this.bird.y = this.ceilingHeight;
+            }
+            
+            if (this.bird.y + this.bird.height > this.canvas.height - this.groundHeight) {
+                this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
+            }
         }
     }
     
@@ -1927,21 +1943,19 @@ class GameEngine {
         const birdTop = this.bird.y;
         const birdBottom = this.bird.y + this.bird.height;
         
-        // DISABLED: Ground and ceiling collisions for easier gameplay
-        // Just keep bird within bounds without dying
+        // Check ground collision (bird dies when hitting ground)
         if (birdBottom >= this.canvas.height - this.groundHeight) {
-            this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
-            this.bird.velocity = 0;
+            this.gameOver();
+            return true;
         }
         
+        // Check ceiling collision (bird dies when hitting ceiling)
         if (birdTop <= this.ceilingHeight) {
-            this.bird.y = this.ceilingHeight;
-            this.bird.velocity = 0;
+            this.gameOver();
+            return true;
         }
         
-        // DISABLED: Pipe collisions for easier testing
-        // You can now fly through pipes without dying
-        /*
+        // Check pipe collisions (bird dies when hitting pipes)
         for (const pipe of this.pipes) {
             const pipeLeft = pipe.x;
             const pipeRight = pipe.x + pipe.width;
@@ -1954,11 +1968,12 @@ class GameEngine {
                 // Check collision with top or bottom pipe
                 if (birdTop < topPipeBottom || birdBottom > bottomPipeTop) {
                     this.gameOver();
-                    return;
+                    return true;
                 }
             }
         }
-        */
+        
+        return false;
     }
     
     gameOver() {
@@ -1967,17 +1982,19 @@ class GameEngine {
         
         this.gameState = 'over';
         
+        // Make the bird fall to death with increased gravity
+        this.bird.velocity = 0; // Reset velocity
+        this.bird.gravity = 0.8; // Increase gravity for dramatic fall
+        this.bird.maxVelocity = 15; // Allow faster falling
+        
         // Play collision sound effect
         this.playCollisionSound();
         
         // Handle high score
         this.handleHighScore();
         
-        // Stop the game loop
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
-            this.animationId = null;
-        }
+        // Start the falling animation loop
+        this.fallToDeath();
         
         // Log final score
         console.log(`Game Over! Final Score: ${this.score}`);
@@ -1986,9 +2003,32 @@ class GameEngine {
         if (this.onGameOver) {
             this.onGameOver(this.score);
         }
+    }
+    
+    fallToDeath() {
+        // Animation loop for the bird falling to death
+        const fallLoop = () => {
+            if (this.gameState === 'over') {
+                // Apply gravity
+                this.bird.velocity += this.bird.gravity;
+                this.bird.velocity = Math.min(this.bird.velocity, this.bird.maxVelocity);
+                this.bird.y += this.bird.velocity;
+                
+                // Update rotation for falling effect
+                this.bird.rotation += 0.1;
+                
+                // Continue falling until bird is off screen
+                if (this.bird.y < this.canvas.height + 100) {
+                    this.render();
+                    requestAnimationFrame(fallLoop);
+                } else {
+                    // Bird is off screen, stop rendering
+                    console.log('Bird has fallen off screen');
+                }
+            }
+        };
         
-        // Restart the render loop to show game over screen
-        this.renderGameOverScreen();
+        fallLoop();
     }
     
     handleHighScore() {
