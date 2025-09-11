@@ -875,7 +875,10 @@ class SensorManager {
     processMotionData() {
         const { minY, maxY, threshold, smoothing } = this.calibrationData;
         
+        console.log('🔍 Calibration data check:', { minY, maxY, threshold, smoothing });
+        
         if (minY === null || maxY === null) {
+            console.log('❌ Calibration incomplete - minY or maxY is null');
             return {
                 y: this.currentY,
                 timestamp: Date.now(),
@@ -2672,7 +2675,9 @@ class ScreenManager {
                 }
             }
         } else {
-            console.log('Game received uncalibrated sensor data:', sensorData.y);
+            console.log('❌ Game received uncalibrated sensor data:', sensorData.y);
+            console.log('🔍 Processed data:', sensorData.processed);
+            console.log('🔍 Calibrated flag:', sensorData.processed?.calibrated);
         }
         
         // Send sensor data to game engine
@@ -3139,7 +3144,9 @@ class ScreenManager {
             console.log('📡 Sending sensor data to game:', {
                 position: sensorData.processed?.normalizedPosition?.toFixed(2),
                 shouldFlap: sensorData.processed?.shouldFlap,
-                calibrated: sensorData.processed?.calibrated
+                calibrated: sensorData.processed?.calibrated,
+                minY: this.controllerSensorManager?.calibrationData?.minY,
+                maxY: this.controllerSensorManager?.calibrationData?.maxY
             });
             
             const success = this.controllerClient.sendSensorData(sensorData);
