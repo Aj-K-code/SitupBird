@@ -1851,11 +1851,7 @@ class GameEngine {
                 // Update last gap position
                 this.lastGapPosition = gapPosition;
                 
-                console.log('🎯 Pipe gap challenge:', {
-                    position: gapPosition.toFixed(2),
-                    type: gapPosition < 0.4 ? 'HIGH (sit up!)' : gapPosition > 0.6 ? 'LOW (lie down!)' : 'MIDDLE',
-                    difference: Math.abs(gapPosition - this.lastGapPosition).toFixed(2)
-                });
+                // Gap challenge created
             }
             
             // Calculate gap size with variation
@@ -1885,7 +1881,7 @@ class GameEngine {
             this.pipes.push(pipe);
             this.lastPipeFrame = this.frame;
             
-            console.log(`Spawned pipe: gapY=${gapY.toFixed(1)}, gapSize=${currentGapSize.toFixed(1)}, position=${gapPosition.toFixed(2)}, calibrated=${pipe.calibrationBased}`);
+            // Pipe spawned successfully
         }
     }
     
@@ -1915,7 +1911,7 @@ class GameEngine {
             
             // Remove pipes that are completely off-screen (with buffer for cleanup)
             if (pipe.x + pipe.width < -50) {
-                console.log(`Removing off-screen pipe at x=${pipe.x}`);
+                // Removing off-screen pipe
                 this.pipes.splice(i, 1);
                 continue;
             }
@@ -1926,10 +1922,7 @@ class GameEngine {
             pipe.bottomHeight = this.canvas.height - pipe.gapY - pipe.gap - this.groundHeight;
         }
         
-        // Log pipe count for debugging
-        if (this.frame % 60 === 0) { // Log every second
-            console.log(`Active pipes: ${this.pipes.length}`);
-        }
+        // Pipe management active
     }
     
     updateScore() {
@@ -1967,6 +1960,13 @@ class GameEngine {
                 
                 // Check collision with top or bottom pipe
                 if (birdTop < topPipeBottom || birdBottom > bottomPipeTop) {
+                    console.log('💥 PIPE COLLISION DETECTED!', {
+                        birdTop: birdTop.toFixed(1),
+                        birdBottom: birdBottom.toFixed(1),
+                        topPipeBottom: topPipeBottom.toFixed(1),
+                        bottomPipeTop: bottomPipeTop.toFixed(1),
+                        score: this.score
+                    });
                     this.gameOver();
                     return true;
                 }
