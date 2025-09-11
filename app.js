@@ -1688,34 +1688,44 @@ class GameEngine {
     }
     
     updateBird(sensorData = {}) {
-        // Apply gravity first
-        this.bird.velocity += this.bird.gravity;
+        // NEW: Position-based control instead of flap-based
+        // Bird position directly follows your body position - perfect for core exercise!
         
-        // Handle flap input from sensor data (after gravity to get correct final velocity)
-        if (sensorData.shouldFlap || (sensorData.processed && sensorData.processed.shouldFlap)) {
-            this.bird.velocity = this.bird.flapStrength;
-            this.playFlapSound();
+        if (sensorData.processed && sensorData.processed.calibrated) {
+            // Map normalized position (0-1) to bird Y position
+            // 0 = lying down = bottom of screen, 1 = sitting up = top of screen
+            const screenHeight = this.canvas.height - this.groundHeight - this.bird.height;
+            const targetY = (1 - sensorData.processed.normalizedPosition) * screenHeight;
+            
+            // Smooth movement to target position for natural feel
+            const smoothing = 0.2; // Adjust for responsiveness (0.1 = smooth, 0.5 = snappy)
+            this.bird.y += (targetY - this.bird.y) * smoothing;
+            
+            // Update velocity for visual effects (rotation, etc.)
+            this.bird.velocity = (targetY - this.bird.y) * 0.1;
+            
+            console.log('🐦 Position control:', {
+                sensorPos: sensorData.processed.normalizedPosition.toFixed(2),
+                targetY: targetY.toFixed(0),
+                birdY: this.bird.y.toFixed(0)
+            });
+        } else {
+            // Fallback: traditional gravity when no sensor data
+            this.bird.velocity += this.bird.gravity;
+            this.bird.velocity = Math.max(-this.bird.maxVelocity, Math.min(this.bird.maxVelocity, this.bird.velocity));
+            this.bird.y += this.bird.velocity;
         }
         
-        // Limit velocity to prevent excessive speed
-        this.bird.velocity = Math.max(-this.bird.maxVelocity, Math.min(this.bird.maxVelocity, this.bird.velocity));
+        // Update rotation based on movement direction
+        this.bird.rotation = Math.max(-0.3, Math.min(0.3, this.bird.velocity * 0.03));
         
-        // Update position
-        this.bird.y += this.bird.velocity;
-        
-        // Update rotation based on velocity
-        this.bird.rotation = Math.max(-0.5, Math.min(0.5, this.bird.velocity * 0.05));
-        
-        // Prevent bird from going above screen
+        // Keep bird within bounds (no death, just boundaries)
         if (this.bird.y < this.ceilingHeight) {
             this.bird.y = this.ceilingHeight;
-            this.bird.velocity = 0;
         }
         
-        // Check for ground collision
         if (this.bird.y + this.bird.height > this.canvas.height - this.groundHeight) {
             this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
-            this.gameOver();
         }
     }
     
@@ -2762,11 +2772,8 @@ class ScreenManager {
             // Update game engine with sensor data for dynamic pipe positioning and physics
             this.gameEngine.updateSensorData(sensorData);
             
-            // Also check if bird should flap
-            if (sensorData.processed.shouldFlap) {
-                console.log('🐦 FLAP DETECTED! Triggering bird flap');
-                this.gameEngine.flap();
-            }
+            // Position-based control - no flapping needed!
+            // Bird position is controlled directly by sensor position
         } else {
             console.log('⚠️ Not sending to game engine - missing requirements');
         }
@@ -2943,59 +2950,33 @@ class ScreenManager {
         canvas.addEventListener('click', handleCanvasClick);
         canvas.addEventListener('touchend', handleCanvasClick);
         
-        // Enhanced cross-platform canvas sizing
+        // Simplified canvas sizing to fix display issues
         const container = canvas.parentElement;
-        const devicePixelRatio = window.devicePixelRatio || 1;
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
-        // Calculate optimal canvas size based on device and screen
-        let maxWidth, maxHeight;
+        // Simple, reliable canvas sizing
+        let canvasWidth, canvasHeight;
         
         if (isMobile) {
-            // Mobile-optimized sizing
-            maxWidth = Math.min(400, container.clientWidth - 20);
-            maxHeight = Math.min(300, window.innerHeight * 0.5);
+            canvasWidth = 400;
+            canvasHeight = 300;
         } else {
-            // Desktop sizing
-            maxWidth = Math.min(800, container.clientWidth - 40);
-            maxHeight = Math.min(600, window.innerHeight * 0.6);
+            canvasWidth = 800;
+            canvasHeight = 600;
         }
         
-        // Maintain 4:3 aspect ratio
-        const aspectRatio = 4 / 3;
-        if (maxWidth / maxHeight > aspectRatio) {
-            maxWidth = maxHeight * aspectRatio;
-        } else {
-            maxHeight = maxWidth / aspectRatio;
-        }
+        // Set canvas size
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         
-        // Set logical canvas size
-        canvas.width = maxWidth;
-        canvas.height = maxHeight;
+        // Set CSS size to match exactly
+        canvas.style.width = canvasWidth + 'px';
+        canvas.style.height = canvasHeight + 'px';
         
-        // Set display size (CSS pixels)
-        canvas.style.width = maxWidth + 'px';
-        canvas.style.height = maxHeight + 'px';
-        
-        // Scale for high DPI displays
-        if (devicePixelRatio > 1) {
-            const scaledWidth = maxWidth * devicePixelRatio;
-            const scaledHeight = maxHeight * devicePixelRatio;
-            
-            // Only scale if device can handle it
-            const memoryEstimate = scaledWidth * scaledHeight * 4; // 4 bytes per pixel
-            const maxMemory = 50 * 1024 * 1024; // 50MB limit
-            
-            if (memoryEstimate < maxMemory) {
-                canvas.width = scaledWidth;
-                canvas.height = scaledHeight;
-                ctx.scale(devicePixelRatio, devicePixelRatio);
-            }
-        }
-        
-        // Optimize canvas context for performance
-        ctx.imageSmoothingEnabled = false; // Pixel-perfect rendering
-        ctx.textBaseline = 'top';
+        // Basic canvas setup
+        ctx.imageSmoothingEnabled = false;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         
         console.log(`Canvas initialized: ${canvas.width}x${canvas.height} (display: ${canvas.style.width}x${canvas.style.height}, DPR: ${devicePixelRatio})`);
         
