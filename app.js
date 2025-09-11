@@ -1323,9 +1323,9 @@ class GameEngine {
         // Pipes array and configuration - Balanced for fitness gaming
         this.pipes = [];
         this.pipeWidth = 80;
-        this.pipeGap = 220; // Slightly larger gap for better accessibility
+        this.pipeGap = 165; // Reduced gap size by 25% (from 220 to 165)
         this.pipeSpeed = 1.2; // Slower pipe speed for easier motion tracking
-        this.pipeSpawnInterval = 300; // Increased frames between pipe spawns (slower rate)
+        this.pipeSpawnInterval = 420; // Increased frames between pipe spawns (1.75x spacing)
         this.lastPipeFrame = 0;
         
         // Calibration-based pipe positioning
@@ -1337,8 +1337,8 @@ class GameEngine {
         
         // Enhanced pipe generation settings - Fine-tuned for better gameplay
         this.pipeVariation = {
-            minInterval: 150,  // Longer minimum for easier gameplay
-            maxInterval: 200,  // Increased maximum for more spacing
+            minInterval: 262,  // 1.75x minimum spacing (150 * 1.75 = 262.5)
+            maxInterval: 350,  // 1.75x maximum spacing (200 * 1.75 = 350)
             gapSizeVariation: 0.15, // Reduced variation for more predictable gaps
             positionSmoothing: 0.4 // Increased smoothing for smoother gap transitions
         };
