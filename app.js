@@ -852,7 +852,9 @@ class SensorManager {
                 
                 // Auto-complete calibration when we have enough range
                 const range = this.calibrationData.maxY - this.calibrationData.minY;
-                if (range > 3.0) { // Minimum 3.0 range for valid calibration
+                console.log('📏 Calibration range check:', { minY: this.calibrationData.minY, maxY: this.calibrationData.maxY, range });
+                
+                if (range > 1.0) { // Reduced minimum range for easier calibration
                     console.log('🎯 Auto-completing calibration with range:', range);
                     this.isCalibrating = false;
                     
@@ -896,6 +898,7 @@ class SensorManager {
         const { minY, maxY, threshold, smoothing } = this.calibrationData;
         
         console.log('🔍 Calibration data check:', { minY, maxY, threshold, smoothing });
+        console.log('🔍 Current Y:', this.currentY, 'Smoothed Y:', this.getSmoothedReading());
         
         if (minY === null || maxY === null) {
             console.log('❌ Calibration incomplete - minY or maxY is null');
@@ -920,10 +923,15 @@ class SensorManager {
         const range = maxY - minY;
         let normalizedPosition = 0.5; // Default middle position
         
+        console.log('📊 Position calculation:', { smoothedY, minY, maxY, range });
+        
         if (range > 0) {
             // Ensure proper clamping between 0 and 1
             const rawPosition = (smoothedY - minY) / range;
             normalizedPosition = Math.max(0, Math.min(1, rawPosition));
+            console.log('📍 Normalized position:', { rawPosition, normalizedPosition });
+        } else {
+            console.log('⚠️ Invalid range for position calculation');
         }
         
         // Calculate motion intensity (rate of change)
@@ -2702,8 +2710,26 @@ class ScreenManager {
         
         // Send sensor data to game engine
         if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
+            console.log('🎮 Sending sensor data to game engine:', {
+                shouldFlap: sensorData.processed.shouldFlap,
+                position: sensorData.processed.normalizedPosition,
+                isDown: sensorData.processed.isDown
+            });
+            
             // Update game engine with sensor data for dynamic pipe positioning and physics
             this.gameEngine.updateSensorData(sensorData);
+            
+            // Also check if bird should flap
+            if (sensorData.processed.shouldFlap) {
+                console.log('🐦 FLAP DETECTED! Triggering bird flap');
+                this.gameEngine.flap();
+            }
+        } else {
+            console.log('⚠️ Not sending to game engine:', {
+                hasGameEngine: !!this.gameEngine,
+                hasProcessed: !!sensorData.processed,
+                isCalibrated: sensorData.processed?.calibrated
+            });
         }
     }
 
