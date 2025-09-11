@@ -2692,14 +2692,18 @@ class ScreenManager {
             
             // Update connection status to show data reception
             const connectionStatus = document.getElementById('connection-status');
-            if (connectionStatus.textContent === 'CONNECTED!') {
+            if (connectionStatus) {
                 if (sensorData.processed.shouldFlap) {
                     connectionStatus.textContent = 'FLAP!';
+                    connectionStatus.style.color = '#00ff00';
                     setTimeout(() => {
-                        if (connectionStatus.textContent === 'FLAP!') {
-                            connectionStatus.textContent = 'CONNECTED!';
-                        }
+                        connectionStatus.textContent = 'MOTION ACTIVE';
+                        connectionStatus.style.color = '#00ffff';
                     }, 200);
+                } else {
+                    // Show motion activity
+                    connectionStatus.textContent = `MOTION: ${(sensorData.processed.normalizedPosition * 100).toFixed(0)}%`;
+                    connectionStatus.style.color = '#00ffff';
                 }
             }
         } else {
@@ -2708,7 +2712,36 @@ class ScreenManager {
             console.log('🔍 Calibrated flag:', sensorData.processed?.calibrated);
         }
         
+        // Update calibration display if we're on the calibration screen
+        if (this.currentScreen === 'calibration-screen') {
+            // Update calibration tracking if we're in the calibration step
+            if (this.sensorManager && this.calibrationStep === 2 && this.sensorManager.isCalibrating) {
+                // Update min/max values as we receive data
+                if (this.sensorManager.calibrationData.minY === null || sensorData.y < this.sensorManager.calibrationData.minY) {
+                    this.sensorManager.calibrationData.minY = sensorData.y;
+                }
+                if (this.sensorManager.calibrationData.maxY === null || sensorData.y > this.sensorManager.calibrationData.maxY) {
+                    this.sensorManager.calibrationData.maxY = sensorData.y;
+                }
+                
+                // Update the calibration display with the current sensor data
+                this.updateCalibrationDisplay(sensorData.y, this.sensorManager.calibrationData);
+            } else if (sensorData.processed) {
+                // Even if not actively calibrating, show the position indicator
+                const calibrationData = this.sensorManager ? this.sensorManager.getCalibrationData() : { minY: null, maxY: null };
+                this.updateCalibrationDisplay(sensorData.y, calibrationData);
+            }
+        }
+        
         // Send sensor data to game engine
+        console.log('🔍 Game engine check:', {
+            hasGameEngine: !!this.gameEngine,
+            gameState: this.gameEngine?.gameState,
+            currentScreen: this.currentScreen,
+            hasProcessed: !!sensorData.processed,
+            isCalibrated: sensorData.processed?.calibrated
+        });
+        
         if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
             console.log('🎮 Sending sensor data to game engine:', {
                 shouldFlap: sensorData.processed.shouldFlap,
@@ -2725,11 +2758,7 @@ class ScreenManager {
                 this.gameEngine.flap();
             }
         } else {
-            console.log('⚠️ Not sending to game engine:', {
-                hasGameEngine: !!this.gameEngine,
-                hasProcessed: !!sensorData.processed,
-                isCalibrated: sensorData.processed?.calibrated
-            });
+            console.log('⚠️ Not sending to game engine - missing requirements');
         }
     }
 
@@ -3631,7 +3660,8 @@ class ScreenManager {
         }
         
         // Update min/max values with enhanced visual feedback
-        if (calibrationData.minY !== null) {
+        // Only update if we have valid values (not null)
+        if (calibrationData.minY !== null && calibrationData.minY !== undefined) {
             const minElement = document.getElementById('min-y-value');
             minElement.textContent = calibrationData.minY.toFixed(1);
             minElement.style.color = '#00FF88';
@@ -3639,7 +3669,7 @@ class ScreenManager {
             document.getElementById('min-marker').classList.remove('hidden');
         }
         
-        if (calibrationData.maxY !== null) {
+        if (calibrationData.maxY !== null && calibrationData.maxY !== undefined) {
             const maxElement = document.getElementById('max-y-value');
             maxElement.textContent = calibrationData.maxY.toFixed(1);
             maxElement.style.color = '#00FF88';
@@ -3651,7 +3681,8 @@ class ScreenManager {
         this.updatePositionIndicatorFromCalibration(currentY, calibrationData);
         
         // Add visual feedback for good calibration range
-        if (calibrationData.minY !== null && calibrationData.maxY !== null) {
+        if ((calibrationData.minY !== null && calibrationData.minY !== undefined) && 
+            (calibrationData.maxY !== null && calibrationData.maxY !== undefined)) {
             const range = Math.abs(calibrationData.maxY - calibrationData.minY);
             const rangeBar = document.querySelector('.range-bar');
             
@@ -3671,7 +3702,9 @@ class ScreenManager {
     updatePositionIndicatorFromCalibration(currentY, calibrationData) {
         const positionIndicator = document.getElementById('current-position');
         
-        if (calibrationData.minY !== null && calibrationData.maxY !== null) {
+        // If we have valid min/max values, calculate position based on them
+        if (calibrationData.minY !== null && calibrationData.minY !== undefined && 
+            calibrationData.maxY !== null && calibrationData.maxY !== undefined) {
             const range = calibrationData.maxY - calibrationData.minY;
             const position = range > 0 ? (currentY - calibrationData.minY) / range : 0.5;
             const clampedPosition = Math.max(0, Math.min(1, position));
@@ -3694,7 +3727,11 @@ class ScreenManager {
                 positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.0)';
             }
         } else {
-            positionIndicator.style.left = '50%';
+            // If we don't have calibration data yet, just show the raw position
+            // This is for cases where we're receiving data from the phone during calibration
+            const normalizedPosition = (currentY + 10) / 20; // Roughly normalize -10 to 10 range to 0-1
+            const clampedPosition = Math.max(0, Math.min(1, normalizedPosition));
+            positionIndicator.style.left = (clampedPosition * 100) + '%';
             positionIndicator.style.backgroundColor = '#00FFFF';
             positionIndicator.style.boxShadow = '0 0 10px #00FFFF';
             positionIndicator.style.transform = 'translate(-50%, -50%) scale(1.0)';
