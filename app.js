@@ -1303,16 +1303,16 @@ class GameEngine {
         this.performanceMonitor = new PerformanceMonitor();
         this.qualitySettings = this.performanceMonitor.getQualitySettings();
         
-        // Bird physics properties
+        // Bird physics properties - Made larger and more visible
         this.bird = {
             x: 100,
             y: canvas.height / 2,
-            width: 50,
-            height: 40,
+            width: 60,  // Increased size
+            height: 50, // Increased size
             velocity: 0,
-            gravity: 0.4,
-            flapStrength: -4.5,
-            maxVelocity: 10,
+            gravity: 0.3,  // Reduced gravity for easier control
+            flapStrength: -6,  // Stronger flap
+            maxVelocity: 8,    // Reduced max velocity
             rotation: 0
         };
         
@@ -1619,6 +1619,7 @@ class GameEngine {
             this.bird.velocity = this.bird.flapStrength;
             this.playFlapSound();
         } else if (this.gameState === 'over') {
+            console.log('🔄 Restarting game from game over screen');
             this.reset();
             this.start();
         }
@@ -1847,19 +1848,21 @@ class GameEngine {
         const birdTop = this.bird.y;
         const birdBottom = this.bird.y + this.bird.height;
         
-        // Check ground collision
+        // DISABLED: Ground and ceiling collisions for easier gameplay
+        // Just keep bird within bounds without dying
         if (birdBottom >= this.canvas.height - this.groundHeight) {
-            this.gameOver();
-            return;
+            this.bird.y = this.canvas.height - this.groundHeight - this.bird.height;
+            this.bird.velocity = 0;
         }
         
-        // Check ceiling collision
         if (birdTop <= this.ceilingHeight) {
-            this.gameOver();
-            return;
+            this.bird.y = this.ceilingHeight;
+            this.bird.velocity = 0;
         }
         
-        // Check pipe collisions
+        // DISABLED: Pipe collisions for easier testing
+        // You can now fly through pipes without dying
+        /*
         for (const pipe of this.pipes) {
             const pipeLeft = pipe.x;
             const pipeRight = pipe.x + pipe.width;
@@ -1876,6 +1879,7 @@ class GameEngine {
                 }
             }
         }
+        */
     }
     
     gameOver() {
@@ -2249,6 +2253,12 @@ class GameEngine {
             this.ctx.font = 'bold 24px "Press Start 2P"';
             this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 60);
             this.ctx.shadowBlur = 0;
+            
+            // Add restart instructions
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.font = '12px "Press Start 2P"';
+            this.ctx.fillText('Tap screen or move phone to restart', this.canvas.width / 2, this.canvas.height / 2 + 80);
+            this.ctx.fillText('Or click "Back to Menu" below', this.canvas.width / 2, this.canvas.height / 2 + 110);
             
             // Score display with bouncing animation
             const scoreScale = 1 + Math.sin(this.frame * 0.15) * 0.1;
@@ -2915,6 +2925,23 @@ class ScreenManager {
     initializeGameCanvas() {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
+        
+        // Add click/touch handling for game restart
+        const handleCanvasClick = (e) => {
+            if (this.gameEngine && this.gameEngine.gameState === 'over') {
+                console.log('🖱️ Canvas clicked - restarting game');
+                this.gameEngine.reset();
+                this.gameEngine.start();
+            }
+        };
+        
+        // Remove existing listeners to avoid duplicates
+        canvas.removeEventListener('click', handleCanvasClick);
+        canvas.removeEventListener('touchend', handleCanvasClick);
+        
+        // Add new listeners
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchend', handleCanvasClick);
         
         // Enhanced cross-platform canvas sizing
         const container = canvas.parentElement;
