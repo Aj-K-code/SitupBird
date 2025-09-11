@@ -1321,7 +1321,7 @@ class GameEngine {
         this.pipeWidth = 80;
         this.pipeGap = 220; // Slightly larger gap for better accessibility
         this.pipeSpeed = 1.8; // Slightly slower for better motion tracking
-        this.pipeSpawnInterval = 120; // frames between pipe spawns
+        this.pipeSpawnInterval = 240; // frames between pipe spawns (doubled for more spacing)
         this.lastPipeFrame = 0;
         
         // Calibration-based pipe positioning
@@ -1748,8 +1748,20 @@ class GameEngine {
                     const motionRange = this.calibrationData.maxY - this.calibrationData.minY;
                     const normalizedRange = Math.max(0.3, Math.min(1.0, motionRange / 8.0)); // Normalize to reasonable range
                     
-                    // Base gap position with random variation
-                    let basePosition = 0.5 + (Math.random() - 0.5) * 0.6;
+                    // Enhanced varied positioning even with calibration
+                    const rand = Math.random();
+                    let basePosition;
+                    
+                    if (rand < 0.25) {
+                        // 25% chance: Force high position (challenge sitting up)
+                        basePosition = 0.15 + Math.random() * 0.25;
+                    } else if (rand < 0.5) {
+                        // 25% chance: Force low position (challenge lying down)
+                        basePosition = 0.60 + Math.random() * 0.25;
+                    } else {
+                        // 50% chance: Use sensor-influenced positioning
+                        basePosition = 0.5 + (Math.random() - 0.5) * 0.4;
+                    }
                     
                     // Influence gap position based on user's recent motion (if available)
                     if (this.nextGapBias !== undefined) {
@@ -1768,9 +1780,24 @@ class GameEngine {
                 }
                 this.lastGapPosition = gapPosition;
             } else {
-                // Use default random positioning when no calibration data available
-                gapPosition = this.defaultGapRange.min + 
-                    Math.random() * (this.defaultGapRange.max - this.defaultGapRange.min);
+                // Enhanced varied positioning - force movement to different heights
+                const rand = Math.random();
+                
+                if (rand < 0.3) {
+                    // 30% chance: High gaps (force sitting up)
+                    gapPosition = 0.15 + Math.random() * 0.25; // 15-40% from top
+                } else if (rand < 0.6) {
+                    // 30% chance: Low gaps (force lying down) 
+                    gapPosition = 0.60 + Math.random() * 0.25; // 60-85% from top
+                } else {
+                    // 40% chance: Middle gaps (normal range)
+                    gapPosition = 0.35 + Math.random() * 0.30; // 35-65% from top
+                }
+                
+                console.log('🎯 Pipe gap challenge:', {
+                    position: gapPosition.toFixed(2),
+                    type: gapPosition < 0.4 ? 'HIGH (sit up!)' : gapPosition > 0.6 ? 'LOW (lie down!)' : 'MIDDLE'
+                });
             }
             
             // Calculate gap size with variation
