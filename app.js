@@ -1320,8 +1320,8 @@ class GameEngine {
         this.pipes = [];
         this.pipeWidth = 80;
         this.pipeGap = 220; // Slightly larger gap for better accessibility
-        this.pipeSpeed = 1.8; // Slightly slower for better motion tracking
-        this.pipeSpawnInterval = 240; // frames between pipe spawns (doubled for more spacing)
+        this.pipeSpeed = 1.2; // Slower pipe speed for easier motion tracking
+        this.pipeSpawnInterval = 300; // Increased frames between pipe spawns (slower rate)
         this.lastPipeFrame = 0;
         
         // Calibration-based pipe positioning
@@ -1333,11 +1333,15 @@ class GameEngine {
         
         // Enhanced pipe generation settings - Fine-tuned for better gameplay
         this.pipeVariation = {
-            minInterval: 100,  // Slightly longer minimum for easier gameplay
-            maxInterval: 140,  // Reduced maximum for more consistent challenge
+            minInterval: 150,  // Longer minimum for easier gameplay
+            maxInterval: 200,  // Increased maximum for more spacing
             gapSizeVariation: 0.15, // Reduced variation for more predictable gaps
             positionSmoothing: 0.4 // Increased smoothing for smoother gap transitions
         };
+        
+        // Track last pipe gap position to prevent consecutive similar openings
+        this.lastGapPosition = 0.5; // Default to middle
+        this.minGapDifference = 0.3; // Minimum difference between consecutive gaps
         
         // Game boundaries
         this.groundHeight = 50;
@@ -1781,22 +1785,41 @@ class GameEngine {
                 this.lastGapPosition = gapPosition;
             } else {
                 // Enhanced varied positioning - force movement to different heights
-                const rand = Math.random();
+                // Ensure consecutive pipes have significantly different positions
+                let candidatePosition;
+                let attempts = 0;
+                const maxAttempts = 10;
                 
-                if (rand < 0.3) {
-                    // 30% chance: High gaps (force sitting up)
-                    gapPosition = 0.15 + Math.random() * 0.25; // 15-40% from top
-                } else if (rand < 0.6) {
-                    // 30% chance: Low gaps (force lying down) 
-                    gapPosition = 0.60 + Math.random() * 0.25; // 60-85% from top
-                } else {
-                    // 40% chance: Middle gaps (normal range)
-                    gapPosition = 0.35 + Math.random() * 0.30; // 35-65% from top
-                }
+                do {
+                    const rand = Math.random();
+                    
+                    if (rand < 0.3) {
+                        // 30% chance: High gaps (force sitting up)
+                        candidatePosition = 0.15 + Math.random() * 0.25; // 15-40% from top
+                    } else if (rand < 0.6) {
+                        // 30% chance: Low gaps (force lying down) 
+                        candidatePosition = 0.60 + Math.random() * 0.25; // 60-85% from top
+                    } else {
+                        // 40% chance: Middle gaps (normal range)
+                        candidatePosition = 0.35 + Math.random() * 0.30; // 35-65% from top
+                    }
+                    
+                    attempts++;
+                    // Check if this position is different enough from the last one
+                    const positionDifference = Math.abs(candidatePosition - this.lastGapPosition);
+                    if (positionDifference >= this.minGapDifference || attempts >= maxAttempts) {
+                        gapPosition = candidatePosition;
+                        break;
+                    }
+                } while (attempts < maxAttempts);
+                
+                // Update last gap position
+                this.lastGapPosition = gapPosition;
                 
                 console.log('🎯 Pipe gap challenge:', {
                     position: gapPosition.toFixed(2),
-                    type: gapPosition < 0.4 ? 'HIGH (sit up!)' : gapPosition > 0.6 ? 'LOW (lie down!)' : 'MIDDLE'
+                    type: gapPosition < 0.4 ? 'HIGH (sit up!)' : gapPosition > 0.6 ? 'LOW (lie down!)' : 'MIDDLE',
+                    difference: Math.abs(gapPosition - this.lastGapPosition).toFixed(2)
                 });
             }
             
@@ -1852,7 +1875,7 @@ class GameEngine {
                 console.log(`Score! New score: ${this.score}`);
             }
             
-            // Move pipe left at current speed
+            // Move pipe left at current speed (slower for better gameplay)
             pipe.x -= this.pipeSpeed;
             
             // Remove pipes that are completely off-screen (with buffer for cleanup)
