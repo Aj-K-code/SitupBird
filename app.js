@@ -2307,31 +2307,16 @@ class GameEngine {
     }
     
     renderRestartIndicator() {
-        // Animated restart button indicator
+        // Simple restart indicator - main button is now in game over screen
         const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2 + 110;
-        const pulseScale = 1 + Math.sin(this.frame * 0.15) * 0.2;
+        const centerY = this.canvas.height / 2 + 120;
         
-        this.ctx.save();
-        this.ctx.translate(centerX, centerY);
-        this.ctx.scale(pulseScale, pulseScale);
-        
-        // Button background
-        this.ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-        this.ctx.fillRect(-60, -15, 120, 30);
-        
-        // Button border
-        this.ctx.strokeStyle = '#00FFFF';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(-60, -15, 120, 30);
-        
-        // Button text
-        this.ctx.fillStyle = '#00FFFF';
-        this.ctx.font = '10px "Press Start 2P"';
+        // Small pulsing indicator
+        const alpha = 0.5 + Math.sin(this.frame * 0.1) * 0.3;
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        this.ctx.font = '8px "Press Start 2P"';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('RESTART', 0, 5);
-        
-        this.ctx.restore();
+        this.ctx.fillText('↑ TAP ANYWHERE ↑', centerX, centerY);
     }
 
     renderUI() {
@@ -2354,30 +2339,47 @@ class GameEngine {
             this.ctx.font = '12px "Press Start 2P"';
             this.ctx.fillText('Reconnect controller to continue', this.canvas.width / 2, this.canvas.height / 2 + 30);
         } else if (this.gameState === 'over') {
-            // Enhanced game over screen with animated elements
+            // Clean game over screen with clear layout
             
-            // Animated overlay with pulsing effect
-            const overlayAlpha = 0.7 + Math.sin(this.frame * 0.05) * 0.1;
-            this.ctx.fillStyle = `rgba(0, 0, 0, ${overlayAlpha})`;
+            // Semi-transparent overlay
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             
-            // Animated background particles
-            this.renderGameOverParticles();
-            
-            // Game Over title with animated glow effect
-            const glowIntensity = Math.sin(this.frame * 0.1) * 0.5 + 0.5;
-            this.ctx.shadowColor = '#FF4444';
-            this.ctx.shadowBlur = 20 + glowIntensity * 10;
+            // Game Over title
             this.ctx.fillStyle = '#FF4444';
             this.ctx.font = 'bold 24px "Press Start 2P"';
-            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 60);
-            this.ctx.shadowBlur = 0;
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 80);
             
-            // Add restart instructions
+            // Final Score - prominent display
+            this.ctx.fillStyle = '#FFFF00';
+            this.ctx.font = 'bold 18px "Press Start 2P"';
+            this.ctx.fillText('FINAL SCORE: ' + this.score, this.canvas.width / 2, this.canvas.height / 2 - 40);
+            
+            // Restart Button - large and visible
+            const buttonWidth = 200;
+            const buttonHeight = 50;
+            const buttonX = this.canvas.width / 2 - buttonWidth / 2;
+            const buttonY = this.canvas.height / 2 - 10;
+            
+            // Button background with glow
+            this.ctx.fillStyle = '#00AA00';
+            this.ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+            
+            // Button border
+            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.lineWidth = 3;
+            this.ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+            
+            // Button text
             this.ctx.fillStyle = '#FFFFFF';
-            this.ctx.font = '12px "Press Start 2P"';
-            this.ctx.fillText('Tap screen or move phone to restart', this.canvas.width / 2, this.canvas.height / 2 + 80);
-            this.ctx.fillText('Or click "Back to Menu" below', this.canvas.width / 2, this.canvas.height / 2 + 110);
+            this.ctx.font = 'bold 16px "Press Start 2P"';
+            this.ctx.fillText('TAP TO RESTART', this.canvas.width / 2, buttonY + 32);
+            
+            // Additional instruction - well spaced
+            this.ctx.fillStyle = '#CCCCCC';
+            this.ctx.font = '10px "Press Start 2P"';
+            this.ctx.fillText('Or use "Back to Menu" button below', this.canvas.width / 2, this.canvas.height / 2 + 80);
             
             // Score display with bouncing animation
             const scoreScale = 1 + Math.sin(this.frame * 0.15) * 0.1;
@@ -2444,8 +2446,7 @@ class GameEngine {
             this.ctx.fillText('Perform situp motion to restart!', this.canvas.width / 2, this.canvas.height / 2 + 80);
             this.ctx.globalAlpha = 1.0;
             
-            // Restart button visual indicator
-            this.renderRestartIndicator();
+            // Game over screen complete - restart button included above
         } else if (this.gameState === 'playing') {
             // Show current score during gameplay in top-left corner
             this.ctx.textAlign = 'left';
@@ -3044,20 +3045,42 @@ class ScreenManager {
         
         // Add click/touch handling for game restart
         const handleCanvasClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
             if (this.gameEngine && this.gameEngine.gameState === 'over') {
-                console.log('🖱️ Canvas clicked - restarting game');
+                console.log('🔄 Restarting game from click/touch');
+                
+                // Reset and restart the game
                 this.gameEngine.reset();
                 this.gameEngine.start();
+                
+                // Show feedback
+                const connectionStatus = document.getElementById('connection-status');
+                if (connectionStatus) {
+                    connectionStatus.textContent = 'GAME RESTARTED!';
+                    connectionStatus.style.color = '#00ff00';
+                    
+                    // Clear feedback after 2 seconds
+                    setTimeout(() => {
+                        if (connectionStatus.textContent === 'GAME RESTARTED!') {
+                            connectionStatus.textContent = 'CONNECTED';
+                            connectionStatus.style.color = '#00ff00';
+                        }
+                    }, 2000);
+                }
             }
         };
         
         // Remove existing listeners to avoid duplicates
         canvas.removeEventListener('click', handleCanvasClick);
         canvas.removeEventListener('touchend', handleCanvasClick);
+        canvas.removeEventListener('touchstart', handleCanvasClick);
         
-        // Add new listeners
-        canvas.addEventListener('click', handleCanvasClick);
-        canvas.addEventListener('touchend', handleCanvasClick);
+        // Add comprehensive event listeners for restart
+        canvas.addEventListener('click', handleCanvasClick, { passive: false });
+        canvas.addEventListener('touchend', handleCanvasClick, { passive: false });
+        canvas.addEventListener('touchstart', handleCanvasClick, { passive: false });
         
         // Simplified canvas sizing to fix display issues
         const container = canvas.parentElement;
