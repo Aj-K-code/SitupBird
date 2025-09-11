@@ -850,6 +850,26 @@ class SensorManager {
                     this.calibrationData.maxY = this.currentY;
                 }
                 
+                // Auto-complete calibration when we have enough range
+                const range = this.calibrationData.maxY - this.calibrationData.minY;
+                if (range > 3.0) { // Minimum 3.0 range for valid calibration
+                    console.log('🎯 Auto-completing calibration with range:', range);
+                    this.isCalibrating = false;
+                    
+                    // Send calibration data to game
+                    if (window.screenManager && window.screenManager.controllerClient) {
+                        window.screenManager.controllerClient.sendCalibrationData(this.calibrationData);
+                    }
+                    
+                    // Update status
+                    const sensorStatus = document.getElementById('sensor-status');
+                    if (sensorStatus) {
+                        sensorStatus.textContent = 'CALIBRATED & ACTIVE';
+                    }
+                    
+                    console.log('✅ Calibration complete:', this.calibrationData);
+                }
+                
                 if (this.onCalibrationUpdate) {
                     this.onCalibrationUpdate(this.currentY, this.calibrationData);
                 }
@@ -2772,6 +2792,17 @@ class ScreenManager {
             
             // Now initialize motion detection after successful connection
             this.initializeControllerMotionDetection();
+            
+            // Show calibration instructions
+            setTimeout(() => {
+                this.errorHandler.showSuccess('Ready! Move your phone to calibrate motion controls.');
+                
+                // Start automatic calibration after connection
+                if (this.controllerSensorManager) {
+                    this.controllerSensorManager.startCalibration();
+                    document.getElementById('sensor-status').textContent = 'CALIBRATING - MOVE PHONE';
+                }
+            }, 2000);
         };
 
         this.controllerClient.onGameDisconnected = () => {
@@ -2784,6 +2815,9 @@ class ScreenManager {
             if (this.controllerSensorManager) {
                 this.controllerSensorManager.setCalibrationData(calibrationData);
                 this.errorHandler.showSuccess('Calibration data received! Motion controls are now active.');
+                
+                // Update sensor status to show calibration is complete
+                document.getElementById('sensor-status').textContent = 'CALIBRATED & ACTIVE';
             }
         };
     }
