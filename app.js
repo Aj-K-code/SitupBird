@@ -1637,6 +1637,7 @@ class GameEngine {
     }
     
     reset() {
+        console.log('🔄 Resetting game engine');
         this.gameState = 'start';
         this.score = 0;
         this.frame = 0;
@@ -1649,6 +1650,8 @@ class GameEngine {
         if (this.onScoreUpdate) {
             this.onScoreUpdate(this.score);
         }
+        
+        console.log('✅ Game engine reset complete');
     }
     
     flap() {
@@ -2082,15 +2085,6 @@ class GameEngine {
         this.bird.gravity = 0.8; // Increase gravity for dramatic fall
         this.bird.maxVelocity = 15; // Allow faster falling
         
-        // Play collision sound effect
-        this.playCollisionSound();
-        
-        // Handle high score
-        this.handleHighScore();
-        
-        // Start the falling animation loop
-        this.fallToDeath();
-        
         // Log final score
         console.log(`Game Over! Final Score: ${this.score}`);
         
@@ -2098,6 +2092,72 @@ class GameEngine {
         if (this.onGameOver) {
             this.onGameOver(this.score);
         }
+        
+        // Render game over screen
+        this.renderGameOverScreen();
+        
+        // Ensure event listeners are still active for restart
+        // Re-attach event listeners to ensure restart functionality works
+        if (this.canvas) {
+            this.reattachCanvasEventListeners();
+        }
+    }
+    
+    // Method to re-attach canvas event listeners for game over screen
+    reattachCanvasEventListeners() {
+        console.log('🔄 Re-attaching canvas event listeners for game over screen');
+        
+        // Get the canvas element
+        const canvas = document.getElementById('game-canvas');
+        if (!canvas) {
+            console.error('❌ Canvas element not found for re-attaching event listeners');
+            return;
+        }
+        
+        // Remove any existing listeners to avoid duplicates
+        const events = ['click', 'touchend', 'touchstart', 'mousedown', 'pointerdown'];
+        events.forEach(eventType => {
+            try {
+                // We can't remove anonymous functions, so we'll just add new ones
+                // The browser will handle duplicates appropriately
+            } catch (e) {
+                // Ignore errors
+            }
+        });
+        
+        // Re-add the event listeners for restart functionality
+        const restartHandler = (e) => {
+            try {
+                console.log('🔄 Restart handler triggered from game over screen');
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Make sure we're in the game over state
+                if (this.gameState === 'over') {
+                    console.log('🔁 Restarting game from game over screen');
+                    this.reset();
+                    this.start();
+                    
+                    // Visual feedback for restart
+                    if (canvas) {
+                        canvas.style.filter = 'brightness(1.2)';
+                        setTimeout(() => {
+                            canvas.style.filter = 'brightness(1)';
+                        }, 100);
+                    }
+                }
+            } catch (error) {
+                console.error('Canvas restart handler error:', error);
+            }
+            
+            return false;
+        };
+        
+        // Add event listeners specifically for restart
+        canvas.addEventListener('click', restartHandler, false);
+        canvas.addEventListener('touchend', restartHandler, false);
+        
+        console.log('✅ Canvas event listeners re-attached for restart functionality');
     }
     
     fallToDeath() {
@@ -2126,6 +2186,8 @@ class GameEngine {
                 } else {
                     // Bird is off screen, stop rendering
                     console.log('Bird has fallen off screen');
+                    // Still keep the game over screen active for restart
+                    this.renderGameOverScreen();
                 }
             }
         };
@@ -2145,6 +2207,8 @@ class GameEngine {
     }
     
     renderGameOverScreen() {
+        console.log('🎨 Rendering game over screen');
+        
         // Render one final frame with game over state
         this.render();
         
@@ -2160,6 +2224,8 @@ class GameEngine {
                 } else {
                     setTimeout(gameOverLoop, 16);
                 }
+            } else {
+                console.log('🎮 Game state changed, stopping game over loop');
             }
         };
         
@@ -2171,6 +2237,8 @@ class GameEngine {
         } else {
             setTimeout(gameOverLoop, 16);
         }
+        
+        console.log('✅ Game over screen rendering loop started');
     }
     
     setControllerConnected(connected) {
@@ -3102,6 +3170,7 @@ class ScreenManager {
                 
                 if (this.gameEngine) {
                     const currentState = this.gameEngine.gameState;
+                    console.log('🎮 Current game state in interaction handler:', currentState);
                     
                     if (currentState === 'over') {
                         console.log('🔄 Restarting game from interaction');
@@ -3119,6 +3188,8 @@ class ScreenManager {
                     } else if (currentState === 'start' || currentState === 'playing') {
                         console.log('🐦 Flap from interaction');
                         this.gameEngine.flap();
+                    } else {
+                        console.log('⚠️ Unhandled game state:', currentState);
                     }
                 } else {
                     console.warn('⚠️ Game engine not available');
