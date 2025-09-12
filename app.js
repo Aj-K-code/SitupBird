@@ -1609,14 +1609,19 @@ class GameEngine {
         
         if (!this.animationId) {
             console.log('🔄 Starting game loop...');
+            // Add periodic debug logging to help identify if the game loop is running
+            this.debugFrameCount = 0;
             this.gameLoop();
         }
     }
     
     stop() {
         if (this.animationId) {
+            // Use vendor-prefixed versions for better Safari compatibility
             if (window.cancelAnimationFrame) {
                 cancelAnimationFrame(this.animationId);
+            } else if (window.webkitCancelAnimationFrame) {
+                webkitCancelAnimationFrame(this.animationId);
             } else {
                 clearTimeout(this.animationId);
             }
@@ -1680,7 +1685,15 @@ class GameEngine {
         if (deltaTime < targetFrameTime - 1) {
             // Skip frame if running too fast
             if (this.gameState !== 'over') {
-                this.animationId = requestAnimationFrame(this.gameLoop);
+                // Use vendor-prefixed versions for better Safari compatibility
+                if (window.requestAnimationFrame) {
+                    this.animationId = requestAnimationFrame(this.gameLoop);
+                } else if (window.webkitRequestAnimationFrame) {
+                    this.animationId = webkitRequestAnimationFrame(this.gameLoop);
+                } else {
+                    // Fallback for older browsers
+                    this.animationId = setTimeout(() => this.gameLoop(), 16);
+                }
             }
             return;
         }
@@ -1690,8 +1703,11 @@ class GameEngine {
         
         if (this.gameState !== 'over') {
             // Use requestAnimationFrame with fallback for older browsers
+            // Include vendor-prefixed versions for better Safari compatibility
             if (window.requestAnimationFrame) {
                 this.animationId = requestAnimationFrame(this.gameLoop);
+            } else if (window.webkitRequestAnimationFrame) {
+                this.animationId = webkitRequestAnimationFrame(this.gameLoop);
             } else {
                 // Fallback for older browsers
                 this.animationId = setTimeout(() => this.gameLoop(), 16);
@@ -1709,6 +1725,14 @@ class GameEngine {
         // Debug logging every 2 seconds
         if (this.frame % 120 === 0) {
             console.log('🎮 Game update - Frame:', this.frame, 'State:', this.gameState, 'Pipes:', this.pipes.length);
+        }
+        
+        // Add Safari-specific debug logging
+        if (typeof this.debugFrameCount === 'number') {
+            this.debugFrameCount++;
+            if (this.debugFrameCount % 60 === 0) { // Every second
+                console.log('⏱️ Game loop running - Frame count:', this.debugFrameCount);
+            }
         }
         
         // Frame rate independent physics
@@ -2062,7 +2086,14 @@ class GameEngine {
                 // Continue falling until bird is off screen
                 if (this.bird.y < this.canvas.height + 100) {
                     this.render();
-                    requestAnimationFrame(fallLoop);
+                    // Use vendor-prefixed versions for better Safari compatibility
+                    if (window.requestAnimationFrame) {
+                        requestAnimationFrame(fallLoop);
+                    } else if (window.webkitRequestAnimationFrame) {
+                        webkitRequestAnimationFrame(fallLoop);
+                    } else {
+                        setTimeout(fallLoop, 16);
+                    }
                 } else {
                     // Bird is off screen, stop rendering
                     console.log('Bird has fallen off screen');
@@ -2092,10 +2123,25 @@ class GameEngine {
         const gameOverLoop = () => {
             if (this.gameState === 'over') {
                 this.render();
-                requestAnimationFrame(gameOverLoop);
+                // Use vendor-prefixed versions for better Safari compatibility
+                if (window.requestAnimationFrame) {
+                    requestAnimationFrame(gameOverLoop);
+                } else if (window.webkitRequestAnimationFrame) {
+                    webkitRequestAnimationFrame(gameOverLoop);
+                } else {
+                    setTimeout(gameOverLoop, 16);
+                }
             }
         };
-        requestAnimationFrame(gameOverLoop);
+        
+        // Use vendor-prefixed versions for better Safari compatibility
+        if (window.requestAnimationFrame) {
+            requestAnimationFrame(gameOverLoop);
+        } else if (window.webkitRequestAnimationFrame) {
+            webkitRequestAnimationFrame(gameOverLoop);
+        } else {
+            setTimeout(gameOverLoop, 16);
+        }
     }
     
     setControllerConnected(connected) {
@@ -3168,9 +3214,12 @@ class ScreenManager {
         this.runBrowserCompatibilityTest(canvas, ctx);
         
         // Initialize game engine with browser compatibility checks
+        console.log('🎮 Initializing game engine...');
         if (!this.gameEngine) {
             try {
+                console.log('🎮 Creating new GameEngine instance...');
                 this.gameEngine = new GameEngine(canvas);
+                console.log('🎮 GameEngine created successfully');
                 
                 // Resume audio context if user has already interacted
                 if (this.shouldResumeAudio && this.gameEngine.audioContext && this.gameEngine.audioContext.state === 'suspended') {
@@ -3202,6 +3251,7 @@ class ScreenManager {
                 console.log('✅ Game engine initialized successfully');
             } catch (error) {
                 console.error('❌ Failed to initialize game engine:', error);
+                console.error('Error stack:', error.stack);
                 const connectionStatus = document.getElementById('connection-status');
                 if (connectionStatus) {
                     connectionStatus.textContent = 'GAME ERROR - Try refreshing';
@@ -3211,15 +3261,24 @@ class ScreenManager {
             }
         } else {
             // Update canvas reference if resized
+            console.log('🎮 Updating existing GameEngine canvas...');
             this.gameEngine.updateCanvas(canvas);
+            console.log('🎮 GameEngine canvas updated');
         }
         
         // Start the game loop with error handling
+        console.log('🎮 Starting game engine...');
         try {
-            this.gameEngine.start();
-            console.log('✅ Game started successfully');
+            if (this.gameEngine) {
+                console.log('🎮 Calling gameEngine.start()...');
+                this.gameEngine.start();
+                console.log('✅ Game started successfully');
+            } else {
+                console.error('❌ Game engine not initialized');
+            }
         } catch (error) {
             console.error('❌ Failed to start game:', error);
+            console.error('Error stack:', error.stack);
         }
     }
     
@@ -3241,6 +3300,17 @@ class ScreenManager {
             canvasSupport: !!canvas.getContext,
             contextSupport: !!ctx
         });
+        
+        // Enhanced Safari-specific debugging
+        if (isSafari) {
+            console.log('Safari detected - enabling enhanced compatibility checks');
+            console.log('requestAnimationFrame support:', !!window.requestAnimationFrame);
+            console.log('webkitRequestAnimationFrame support:', !!window.webkitRequestAnimationFrame);
+            console.log('cancelAnimationFrame support:', !!window.cancelAnimationFrame);
+            console.log('webkitCancelAnimationFrame support:', !!window.webkitCancelAnimationFrame);
+            console.log('performance.now support:', !!window.performance?.now);
+            console.log('webkitPerformance support:', !!window.webkitPerformance);
+        }
         
         // Test canvas rendering
         try {
@@ -3280,6 +3350,8 @@ class ScreenManager {
             } else if (isSafari) {
                 connectionStatus.textContent = 'SAFARI DETECTED';
                 connectionStatus.style.color = '#ffaa00';
+                // Add special Safari warning
+                connectionStatus.textContent += ' - CHECK CONSOLE FOR ERRORS';
             } else if (isMobile) {
                 connectionStatus.textContent = 'MOBILE DETECTED';
                 connectionStatus.style.color = '#00aaff';
