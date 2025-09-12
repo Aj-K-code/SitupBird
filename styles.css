@@ -13,11 +13,20 @@ body {
   min-height: 100vh;
   overflow: hidden;
   
-  /* Enhanced touch support */
+  /* Enhanced touch support for Safari and mobile */
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   -khtml-user-select: none;
   -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  
+  /* Safari-specific optimizations */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+  
+  /* Prevent zoom on double tap */
+  touch-action: manipulation;
   -ms-user-select: none;
   user-select: none;
   
@@ -339,6 +348,23 @@ body {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
+  
+  /* Safari and mobile touch optimizations */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  
+  /* Hardware acceleration for Safari */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  
+  /* Prevent context menu on long press */
+  -webkit-context-menu: none;
+  context-menu: none;
   
   /* Touch interaction */
   touch-action: none;

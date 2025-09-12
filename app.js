@@ -2451,13 +2451,15 @@ class ScreenManager {
     }
 
     showScreen(screenId) {
-        // Hide all screens
+        // Hide all screens using Tailwind's hidden class
         Object.values(this.screens).forEach(screen => {
+            screen.classList.add('hidden');
             screen.classList.remove('active');
         });
         
         // Show target screen
         if (this.screens[screenId]) {
+            this.screens[screenId].classList.remove('hidden');
             this.screens[screenId].classList.add('active');
             this.currentScreen = screenId;
         }
@@ -3009,20 +3011,32 @@ class ScreenManager {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         
-        // Improved click/touch handling with better browser compatibility
+        // Universal click/touch handler for all browsers including Safari and mobile
         const handleCanvasInteraction = (e) => {
             try {
                 console.log('🖱️ Canvas interaction detected!', e.type, 'Game state:', this.gameEngine?.gameState);
                 
-                if (e.preventDefault) e.preventDefault();
-                if (e.stopPropagation) e.stopPropagation();
+                // Prevent default behavior and event bubbling
+                if (e && e.preventDefault) e.preventDefault();
+                if (e && e.stopPropagation) e.stopPropagation();
                 
                 if (this.gameEngine) {
-                    if (this.gameEngine.gameState === 'over') {
+                    const currentState = this.gameEngine.gameState;
+                    
+                    if (currentState === 'over') {
                         console.log('🔄 Restarting game from interaction');
                         this.gameEngine.reset();
                         this.gameEngine.start();
-                    } else if (this.gameEngine.gameState === 'start' || this.gameEngine.gameState === 'playing') {
+                        
+                        // Visual feedback for restart
+                        const canvas = this.gameEngine.canvas;
+                        if (canvas) {
+                            canvas.style.filter = 'brightness(1.2)';
+                            setTimeout(() => {
+                                canvas.style.filter = 'brightness(1)';
+                            }, 100);
+                        }
+                    } else if (currentState === 'start' || currentState === 'playing') {
                         console.log('🐦 Flap from interaction');
                         this.gameEngine.flap();
                     }
@@ -3032,33 +3046,63 @@ class ScreenManager {
             } catch (error) {
                 console.error('Canvas interaction error:', error);
             }
+            
+            return false; // Prevent any default behavior
         };
         
         // Remove existing listeners to avoid duplicates
         const events = ['click', 'touchend', 'touchstart', 'mousedown', 'pointerdown'];
         events.forEach(eventType => {
-            canvas.removeEventListener(eventType, handleCanvasInteraction);
+            try {
+                canvas.removeEventListener(eventType, handleCanvasInteraction);
+            } catch (e) {
+                // Ignore errors when removing non-existent listeners
+            }
         });
         
-        // Add comprehensive event listeners with fallbacks for different browsers
+        // Safari and mobile-friendly event listener setup
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        console.log('Browser detection:', { isSafari, isMobile });
+        
+        // Add event listeners with progressive enhancement
         try {
-            // Modern browsers with passive support
-            canvas.addEventListener('click', handleCanvasInteraction, { passive: false });
-            canvas.addEventListener('touchend', handleCanvasInteraction, { passive: false });
-            canvas.addEventListener('mousedown', handleCanvasInteraction, { passive: false });
+            // Primary click event - works on all browsers
+            canvas.addEventListener('click', handleCanvasInteraction, false);
             
-            // Pointer events for better touch support
-            if (window.PointerEvent) {
-                canvas.addEventListener('pointerdown', handleCanvasInteraction, { passive: false });
+            // Touch events for mobile - essential for iOS Safari
+            if (isMobile || 'ontouchstart' in window) {
+                canvas.addEventListener('touchstart', handleCanvasInteraction, false);
+                canvas.addEventListener('touchend', handleCanvasInteraction, false);
+                console.log('✅ Touch events added for mobile');
             }
             
-            console.log('✅ Canvas event listeners added successfully');
+            // Mouse events for desktop
+            if (!isMobile) {
+                canvas.addEventListener('mousedown', handleCanvasInteraction, false);
+                console.log('✅ Mouse events added for desktop');
+            }
+            
+            // Pointer events if supported (modern browsers)
+            if (window.PointerEvent && !isSafari) {
+                canvas.addEventListener('pointerdown', handleCanvasInteraction, false);
+                console.log('✅ Pointer events added');
+            }
+            
+            console.log('✅ Canvas event listeners configured for browser compatibility');
+            
         } catch (error) {
-            // Fallback for older browsers
-            console.log('Using fallback event listeners for older browser');
-            canvas.addEventListener('click', handleCanvasInteraction);
-            canvas.addEventListener('touchend', handleCanvasInteraction);
-            canvas.addEventListener('mousedown', handleCanvasInteraction);
+            // Ultimate fallback - basic event listeners
+            console.warn('Using basic fallback event listeners:', error);
+            try {
+                canvas.onclick = handleCanvasInteraction;
+                canvas.ontouchstart = handleCanvasInteraction;
+                canvas.ontouchend = handleCanvasInteraction;
+                console.log('✅ Fallback event handlers set');
+            } catch (fallbackError) {
+                console.error('❌ Failed to set any event handlers:', fallbackError);
+            }
         }
         
         // Simplified canvas sizing to fix display issues
@@ -3076,7 +3120,11 @@ class ScreenManager {
             canvasHeight = 600;
         }
         
-        // Set canvas size
+        // Browser detection for compatibility
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // Set canvas size with browser-specific handling
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
         
@@ -3084,12 +3132,45 @@ class ScreenManager {
         canvas.style.width = canvasWidth + 'px';
         canvas.style.height = canvasHeight + 'px';
         
-        // Basic canvas setup
-        ctx.imageSmoothingEnabled = false;
+        // Safari and mobile optimizations
+        if (isSafari || isMobile) {
+            canvas.style.webkitTransform = 'translateZ(0)';
+            canvas.style.transform = 'translateZ(0)';
+            canvas.style.webkitBackfaceVisibility = 'hidden';
+            canvas.style.backfaceVisibility = 'hidden';
+        }
+        
+        // Canvas rendering setup with compatibility checks
+        try {
+            ctx.imageSmoothingEnabled = false;
+        } catch (e) {
+            // Fallback for older browsers
+            try {
+                ctx.webkitImageSmoothingEnabled = false;
+                ctx.mozImageSmoothingEnabled = false;
+                ctx.msImageSmoothingEnabled = false;
+            } catch (fallbackError) {
+                console.warn('Image smoothing control not available');
+            }
+        }
+        
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        console.log(`Canvas initialized: ${canvas.width}x${canvas.height} (display: ${canvas.style.width}x${canvas.style.height}, DPR: ${devicePixelRatio})`);
+        // Test basic canvas functionality
+        try {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 1, 1);
+            ctx.clearRect(0, 0, 1, 1);
+            console.log('✅ Canvas functionality test passed');
+        } catch (testError) {
+            console.error('❌ Canvas functionality test failed:', testError);
+        }
+        
+        console.log(`Canvas initialized: ${canvas.width}x${canvas.height} (display: ${canvas.style.width}x${canvas.style.height}, Safari: ${isSafari}, Mobile: ${isMobile})`);
+        
+        // Run browser compatibility test before initializing game
+        this.runBrowserCompatibilityTest(canvas, ctx);
         
         // Initialize game engine with browser compatibility checks
         if (!this.gameEngine) {
@@ -3144,6 +3225,73 @@ class ScreenManager {
             console.log('✅ Game started successfully');
         } catch (error) {
             console.error('❌ Failed to start game:', error);
+        }
+    }
+    
+    runBrowserCompatibilityTest(canvas, ctx) {
+        console.log('🔍 Running browser compatibility test...');
+        
+        const userAgent = navigator.userAgent;
+        const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+        
+        console.log('Browser info:', {
+            userAgent: userAgent,
+            isSafari: isSafari,
+            isMobile: isMobile,
+            isIOS: isIOS,
+            touchSupport: 'ontouchstart' in window,
+            pointerEvents: !!window.PointerEvent,
+            canvasSupport: !!canvas.getContext,
+            contextSupport: !!ctx
+        });
+        
+        // Test canvas rendering
+        try {
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(10, 10, 50, 50);
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText('TEST', 35, 35);
+            console.log('✅ Canvas rendering test passed');
+            
+            // Clear test
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        } catch (error) {
+            console.error('❌ Canvas rendering test failed:', error);
+        }
+        
+        // Test event handling
+        let eventTestPassed = false;
+        const testHandler = () => {
+            eventTestPassed = true;
+            console.log('✅ Event handling test passed');
+        };
+        
+        try {
+            canvas.addEventListener('click', testHandler, false);
+            canvas.removeEventListener('click', testHandler, false);
+            console.log('✅ Event listener test passed');
+        } catch (error) {
+            console.error('❌ Event listener test failed:', error);
+        }
+        
+        // Show compatibility status to user
+        const connectionStatus = document.getElementById('connection-status');
+        if (connectionStatus) {
+            if (isSafari && isMobile) {
+                connectionStatus.textContent = 'SAFARI MOBILE DETECTED';
+                connectionStatus.style.color = '#ffaa00';
+            } else if (isSafari) {
+                connectionStatus.textContent = 'SAFARI DETECTED';
+                connectionStatus.style.color = '#ffaa00';
+            } else if (isMobile) {
+                connectionStatus.textContent = 'MOBILE DETECTED';
+                connectionStatus.style.color = '#00aaff';
+            } else {
+                connectionStatus.textContent = 'DESKTOP DETECTED';
+                connectionStatus.style.color = '#00ff00';
+            }
         }
     }
 

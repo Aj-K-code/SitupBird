@@ -1,0 +1,83 @@
+/* Custom styles for Situp Bird Game - Tailwind CSS version */
+
+/* Ensure screens are properly hidden/shown */
+.screen {
+    display: none;
+}
+
+.screen.active {
+    display: flex !important;
+}
+
+/* Custom animations for game elements */
+@keyframes pulse-glow {
+    0%, 100% { 
+        box-shadow: 0 0 5px currentColor; 
+    }
+    50% { 
+        box-shadow: 0 0 20px currentColor; 
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Canvas specific styles that Tailwind can't handle */
+#game-canvas {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+}
+
+/* Motion bar animation */
+#motion-fill {
+    transition: height 0.1s ease-out;
+}
+
+/* Debug panel scrolling */
+#debug-messages {
+    scrollbar-width: thin;
+    scrollbar-color: #4ade80 #1f2937;
+}
+
+#debug-messages::-webkit-scrollbar {
+    width: 4px;
+}
+
+#debug-messages::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+#debug-messages::-webkit-scrollbar-thumb {
+    background: #4ade80;
+    border-radius: 2px;
+}
+
+/* Ensure proper touch handling on mobile */
+body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: manipulation;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
