@@ -1296,8 +1296,26 @@ class PerformanceMonitor {
 // Game Engine for Core Game Logic and Physics
 class GameEngine {
     constructor(canvas) {
+        // Browser compatibility check
+        if (!canvas || !canvas.getContext) {
+            throw new Error('Canvas not supported');
+        }
+        
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
+        
+        if (!this.ctx) {
+            throw new Error('2D context not supported');
+        }
+        
+        // Test basic canvas functionality
+        try {
+            this.ctx.fillStyle = '#000000';
+            this.ctx.fillRect(0, 0, 1, 1);
+        } catch (error) {
+            throw new Error('Canvas rendering not supported: ' + error.message);
+        }
+        
         this.gameState = 'start'; // 'start', 'playing', 'paused', 'over'
         this.score = 0;
         this.frame = 0;
@@ -1585,17 +1603,23 @@ class GameEngine {
             this.isNewHighScore = false;
             
             // Visual feedback for game start
-            console.log('🎮 Game Started!');
+            console.log('🎮 Game Started! State:', this.gameState);
+            console.log('🐦 Bird position:', this.bird.y, 'Canvas height:', this.canvas.height);
         }
         
         if (!this.animationId) {
+            console.log('🔄 Starting game loop...');
             this.gameLoop();
         }
     }
     
     stop() {
         if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
+            if (window.cancelAnimationFrame) {
+                cancelAnimationFrame(this.animationId);
+            } else {
+                clearTimeout(this.animationId);
+            }
             this.animationId = null;
         }
     }
@@ -1619,11 +1643,13 @@ class GameEngine {
         if (this.gameState === 'playing') {
             this.bird.velocity = this.bird.flapStrength;
             this.playFlapSound();
-        } else if (this.gameState === 'start' && this.controllerConnected) {
+        } else if (this.gameState === 'start') {
+            // Start game with click/tap (works with or without controller)
             this.start();
             this.bird.velocity = this.bird.flapStrength;
             this.playFlapSound();
-        } else if (this.gameState === 'paused' && this.controllerConnected) {
+        } else if (this.gameState === 'paused') {
+            // Resume game with click/tap (works with or without controller)
             this.gameState = 'playing';
             this.bird.velocity = this.bird.flapStrength;
             this.playFlapSound();
@@ -1663,7 +1689,13 @@ class GameEngine {
         this.render();
         
         if (this.gameState !== 'over') {
-            this.animationId = requestAnimationFrame(this.gameLoop);
+            // Use requestAnimationFrame with fallback for older browsers
+            if (window.requestAnimationFrame) {
+                this.animationId = requestAnimationFrame(this.gameLoop);
+            } else {
+                // Fallback for older browsers
+                this.animationId = setTimeout(() => this.gameLoop(), 16);
+            }
         }
     }
     
@@ -1673,6 +1705,11 @@ class GameEngine {
         }
         
         this.frame++;
+        
+        // Debug logging every 2 seconds
+        if (this.frame % 120 === 0) {
+            console.log('🎮 Game update - Frame:', this.frame, 'State:', this.gameState, 'Pipes:', this.pipes.length);
+        }
         
         // Frame rate independent physics
         const frameMultiplier = deltaTime / 16.67; // Normalize to 60fps
@@ -1733,10 +1770,15 @@ class GameEngine {
                 birdY: this.bird.y.toFixed(0)
             });
         } else {
-            // Fallback: traditional gravity when no sensor data
+            // Fallback: traditional flappy bird physics when no sensor data
             this.bird.velocity += this.bird.gravity;
             this.bird.velocity = Math.max(-this.bird.maxVelocity, Math.min(this.bird.maxVelocity, this.bird.velocity));
             this.bird.y += this.bird.velocity;
+            
+            // Log fallback mode occasionally for debugging
+            if (this.frame % 120 === 0) { // Every 2 seconds
+                console.log('🎮 Using click/tap controls (no sensor data)');
+            }
         }
         
         // Update rotation based on movement direction
@@ -2339,47 +2381,34 @@ class GameEngine {
             this.ctx.font = '12px "Press Start 2P"';
             this.ctx.fillText('Reconnect controller to continue', this.canvas.width / 2, this.canvas.height / 2 + 30);
         } else if (this.gameState === 'over') {
-            // Clean game over screen with clear layout
+            // Simple game over screen - click anywhere to retry
             
             // Semi-transparent overlay
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             
-            // Game Over title
+            // Game Over title with font fallbacks
             this.ctx.fillStyle = '#FF4444';
-            this.ctx.font = 'bold 24px "Press Start 2P"';
+            this.ctx.font = 'bold 24px Arial, sans-serif';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 80);
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 60);
             
             // Final Score - prominent display
             this.ctx.fillStyle = '#FFFF00';
-            this.ctx.font = 'bold 18px "Press Start 2P"';
-            this.ctx.fillText('FINAL SCORE: ' + this.score, this.canvas.width / 2, this.canvas.height / 2 - 40);
+            this.ctx.font = 'bold 20px Arial, sans-serif';
+            this.ctx.fillText('SCORE: ' + this.score, this.canvas.width / 2, this.canvas.height / 2 - 20);
             
-            // Restart Button - large and visible
-            const buttonWidth = 200;
-            const buttonHeight = 50;
-            const buttonX = this.canvas.width / 2 - buttonWidth / 2;
-            const buttonY = this.canvas.height / 2 - 10;
+            // Simple click instruction with pulsing effect
+            const alpha = 0.5 + Math.sin(this.frame * 0.1) * 0.5;
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            this.ctx.font = 'bold 18px Arial, sans-serif';
+            this.ctx.fillText('CLICK TO RETRY', this.canvas.width / 2, this.canvas.height / 2 + 30);
             
-            // Button background with glow
-            this.ctx.fillStyle = '#00AA00';
-            this.ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
-            
-            // Button border
-            this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 3;
-            this.ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
-            
-            // Button text
-            this.ctx.fillStyle = '#FFFFFF';
-            this.ctx.font = 'bold 16px "Press Start 2P"';
-            this.ctx.fillText('TAP TO RESTART', this.canvas.width / 2, buttonY + 32);
-            
-            // Additional instruction - well spaced
+            // Smaller instruction
             this.ctx.fillStyle = '#CCCCCC';
-            this.ctx.font = '10px "Press Start 2P"';
-            this.ctx.fillText('Or use "Back to Menu" button below', this.canvas.width / 2, this.canvas.height / 2 + 80);
+            this.ctx.font = '14px Arial, sans-serif';
+            this.ctx.fillText('Tap anywhere on screen', this.canvas.width / 2, this.canvas.height / 2 + 60);
             
             // Score display with bouncing animation
             const scoreScale = 1 + Math.sin(this.frame * 0.15) * 0.1;
@@ -3043,44 +3072,51 @@ class ScreenManager {
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         
-        // Add click/touch handling for game restart
-        const handleCanvasClick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            if (this.gameEngine && this.gameEngine.gameState === 'over') {
-                console.log('🔄 Restarting game from click/touch');
+        // Improved click/touch handling with better browser compatibility
+        const handleCanvasInteraction = (e) => {
+            try {
+                if (e.preventDefault) e.preventDefault();
+                if (e.stopPropagation) e.stopPropagation();
                 
-                // Reset and restart the game
-                this.gameEngine.reset();
-                this.gameEngine.start();
-                
-                // Show feedback
-                const connectionStatus = document.getElementById('connection-status');
-                if (connectionStatus) {
-                    connectionStatus.textContent = 'GAME RESTARTED!';
-                    connectionStatus.style.color = '#00ff00';
-                    
-                    // Clear feedback after 2 seconds
-                    setTimeout(() => {
-                        if (connectionStatus.textContent === 'GAME RESTARTED!') {
-                            connectionStatus.textContent = 'CONNECTED';
-                            connectionStatus.style.color = '#00ff00';
-                        }
-                    }, 2000);
+                if (this.gameEngine) {
+                    if (this.gameEngine.gameState === 'over') {
+                        console.log('🔄 Restarting game from interaction');
+                        this.gameEngine.reset();
+                        this.gameEngine.start();
+                    } else if (this.gameEngine.gameState === 'start' || this.gameEngine.gameState === 'playing') {
+                        console.log('🐦 Flap from interaction');
+                        this.gameEngine.flap();
+                    }
                 }
+            } catch (error) {
+                console.error('Canvas interaction error:', error);
             }
         };
         
         // Remove existing listeners to avoid duplicates
-        canvas.removeEventListener('click', handleCanvasClick);
-        canvas.removeEventListener('touchend', handleCanvasClick);
-        canvas.removeEventListener('touchstart', handleCanvasClick);
+        const events = ['click', 'touchend', 'touchstart', 'mousedown', 'pointerdown'];
+        events.forEach(eventType => {
+            canvas.removeEventListener(eventType, handleCanvasInteraction);
+        });
         
-        // Add comprehensive event listeners for restart
-        canvas.addEventListener('click', handleCanvasClick, { passive: false });
-        canvas.addEventListener('touchend', handleCanvasClick, { passive: false });
-        canvas.addEventListener('touchstart', handleCanvasClick, { passive: false });
+        // Add comprehensive event listeners with fallbacks for different browsers
+        try {
+            // Modern browsers with passive support
+            canvas.addEventListener('click', handleCanvasInteraction, { passive: false });
+            canvas.addEventListener('touchend', handleCanvasInteraction, { passive: false });
+            canvas.addEventListener('mousedown', handleCanvasInteraction, { passive: false });
+            
+            // Pointer events for better touch support
+            if (window.PointerEvent) {
+                canvas.addEventListener('pointerdown', handleCanvasInteraction, { passive: false });
+            }
+        } catch (error) {
+            // Fallback for older browsers
+            console.log('Using fallback event listeners for older browser');
+            canvas.addEventListener('click', handleCanvasInteraction);
+            canvas.addEventListener('touchend', handleCanvasInteraction);
+            canvas.addEventListener('mousedown', handleCanvasInteraction);
+        }
         
         // Simplified canvas sizing to fix display issues
         const container = canvas.parentElement;
@@ -3112,42 +3148,60 @@ class ScreenManager {
         
         console.log(`Canvas initialized: ${canvas.width}x${canvas.height} (display: ${canvas.style.width}x${canvas.style.height}, DPR: ${devicePixelRatio})`);
         
-        // Initialize game engine if not already created
+        // Initialize game engine with browser compatibility checks
         if (!this.gameEngine) {
-            this.gameEngine = new GameEngine(canvas);
-            
-            // Resume audio context if user has already interacted
-            if (this.shouldResumeAudio && this.gameEngine.audioContext && this.gameEngine.audioContext.state === 'suspended') {
-                this.gameEngine.audioContext.resume().then(() => {
-                    console.log('Audio context resumed after game engine creation');
-                }).catch(error => {
-                    console.warn('Failed to resume audio context after game engine creation:', error);
-                });
+            try {
+                this.gameEngine = new GameEngine(canvas);
+                
+                // Resume audio context if user has already interacted
+                if (this.shouldResumeAudio && this.gameEngine.audioContext && this.gameEngine.audioContext.state === 'suspended') {
+                    this.gameEngine.audioContext.resume().then(() => {
+                        console.log('Audio context resumed after game engine creation');
+                    }).catch(error => {
+                        console.warn('Failed to resume audio context after game engine creation:', error);
+                    });
+                }
+                
+                this.gameEngine.onScoreUpdate = (score) => {
+                    const scoreElement = document.getElementById('score');
+                    if (scoreElement) {
+                        scoreElement.textContent = score.toString();
+                    }
+                };
+                
+                this.gameEngine.onGameOver = (finalScore) => {
+                    console.log(`Game Over! Final Score: ${finalScore}`);
+                    
+                    const scoreElement = document.getElementById('score');
+                    if (scoreElement) {
+                        scoreElement.textContent = finalScore.toString();
+                    }
+                    
+                    this.handleGameOver(finalScore);
+                };
+                
+                console.log('✅ Game engine initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize game engine:', error);
+                const connectionStatus = document.getElementById('connection-status');
+                if (connectionStatus) {
+                    connectionStatus.textContent = 'GAME ERROR - Try refreshing';
+                    connectionStatus.style.color = '#ff0000';
+                }
+                return;
             }
-            
-            this.gameEngine.onScoreUpdate = (score) => {
-                document.getElementById('score').textContent = score.toString();
-            };
-            this.gameEngine.onGameOver = (finalScore) => {
-                // Handle game over state with final score
-                console.log(`Game Over! Final Score: ${finalScore}`);
-                
-                // Update the score display one final time
-                document.getElementById('score').textContent = finalScore.toString();
-                
-                // Could add additional game over handling here like:
-                // - Save high score to localStorage
-                // - Show game over modal
-                // - Send score to server for leaderboards
-                this.handleGameOver(finalScore);
-            };
         } else {
             // Update canvas reference if resized
             this.gameEngine.updateCanvas(canvas);
         }
         
-        // Start the game loop
-        this.gameEngine.start();
+        // Start the game loop with error handling
+        try {
+            this.gameEngine.start();
+            console.log('✅ Game started successfully');
+        } catch (error) {
+            console.error('❌ Failed to start game:', error);
+        }
     }
 
     async initializeControllerMotionDetection() {
