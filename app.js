@@ -3060,7 +3060,7 @@ class ScreenManager {
             }
         });
         
-        // Safari and mobile-friendly event listener setup
+        // Browser detection for compatibility (declared once at the top)
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
@@ -3107,7 +3107,6 @@ class ScreenManager {
         
         // Simplified canvas sizing to fix display issues
         const container = canvas.parentElement;
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         // Simple, reliable canvas sizing
         let canvasWidth, canvasHeight;
@@ -3119,10 +3118,6 @@ class ScreenManager {
             canvasWidth = 800;
             canvasHeight = 600;
         }
-        
-        // Browser detection for compatibility
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         // Set canvas size with browser-specific handling
         canvas.width = canvasWidth;
