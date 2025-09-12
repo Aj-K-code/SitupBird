@@ -1320,6 +1320,9 @@ class GameEngine {
         this.score = 0;
         this.frame = 0;
         this.animationId = null;
+        this.lastTime = window.performance ? 
+            (performance.now || performance.webkitNow || performance.mozNow || performance.msNow).call(performance) : 
+            Date.now();
         
         // Performance monitoring
         this.performanceMonitor = new PerformanceMonitor();
@@ -1611,7 +1614,11 @@ class GameEngine {
             console.log('🔄 Starting game loop...');
             // Add periodic debug logging to help identify if the game loop is running
             this.debugFrameCount = 0;
-            this.gameLoop();
+            // Initialize lastTime for the game loop
+            this.lastTime = window.performance ? 
+                (performance.now || performance.webkitNow || performance.mozNow || performance.msNow).call(performance) : 
+                Date.now();
+            this.gameLoop(this.lastTime);
         }
     }
     
@@ -1665,7 +1672,19 @@ class GameEngine {
         }
     }
     
-    gameLoop(currentTime = performance.now()) {
+    gameLoop(currentTime) {
+        // Fallback for performance.now() in older browsers
+        if (currentTime === undefined) {
+            currentTime = window.performance ? 
+                (performance.now || performance.webkitNow || performance.mozNow || performance.msNow).call(performance) : 
+                Date.now();
+        }
+        
+        // If we still don't have a time value, use Date.now()
+        if (currentTime === undefined) {
+            currentTime = Date.now();
+        }
+        
         // Performance monitoring
         const deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
@@ -1678,6 +1697,11 @@ class GameEngine {
         if (JSON.stringify(newQualitySettings) !== JSON.stringify(this.qualitySettings)) {
             this.qualitySettings = newQualitySettings;
             console.log('Quality settings updated:', this.qualitySettings);
+        }
+        
+        // Enhanced debugging for Safari
+        if (this.frame % 60 === 0) { // Every second
+            console.log('📊 Game loop running - Frame:', this.frame, 'State:', this.gameState, 'Delta time:', deltaTime);
         }
         
         // Adaptive frame rate limiting
@@ -1696,6 +1720,11 @@ class GameEngine {
                 }
             }
             return;
+        }
+        
+        // Additional debugging to check if update and render are being called
+        if (this.frame % 60 === 0) {
+            console.log('🔄 Calling update() and render()');
         }
         
         this.update(deltaTime);
@@ -2154,6 +2183,11 @@ class GameEngine {
     }
     
     render() {
+        // Debugging to verify render is being called
+        if (this.frame % 60 === 0) { // Every second
+            console.log('🎨 Render called - Frame:', this.frame);
+        }
+        
         // Clear canvas
         this.ctx.fillStyle = '#87CEEB'; // Sky blue background
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -3271,7 +3305,9 @@ class ScreenManager {
         try {
             if (this.gameEngine) {
                 console.log('🎮 Calling gameEngine.start()...');
+                console.log('🎮 Current game state before start:', this.gameEngine.gameState);
                 this.gameEngine.start();
+                console.log('🎮 Game state after start:', this.gameEngine.gameState);
                 console.log('✅ Game started successfully');
             } else {
                 console.error('❌ Game engine not initialized');
