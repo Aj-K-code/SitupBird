@@ -2381,99 +2381,36 @@ class GameEngine {
             this.ctx.font = '12px "Press Start 2P"';
             this.ctx.fillText('Reconnect controller to continue', this.canvas.width / 2, this.canvas.height / 2 + 30);
         } else if (this.gameState === 'over') {
-            // Simple game over screen - click anywhere to retry
+            // Clean game over screen - click anywhere to retry
             
             // Semi-transparent overlay
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             
-            // Game Over title with font fallbacks
-            this.ctx.fillStyle = '#FF4444';
-            this.ctx.font = 'bold 24px Arial, sans-serif';
+            // Reset text properties
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 60);
             
-            // Final Score - prominent display
+            // Game Over title
+            this.ctx.fillStyle = '#FF4444';
+            this.ctx.font = 'bold 28px Arial, sans-serif';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2 - 80);
+            
+            // Final Score - single display only
             this.ctx.fillStyle = '#FFFF00';
-            this.ctx.font = 'bold 20px Arial, sans-serif';
-            this.ctx.fillText('SCORE: ' + this.score, this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.font = 'bold 24px Arial, sans-serif';
+            this.ctx.fillText('SCORE: ' + this.score, this.canvas.width / 2, this.canvas.height / 2 - 30);
             
-            // Simple click instruction with pulsing effect
-            const alpha = 0.5 + Math.sin(this.frame * 0.1) * 0.5;
+            // Click instruction with pulsing effect
+            const alpha = 0.6 + Math.sin(this.frame * 0.15) * 0.4;
             this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-            this.ctx.font = 'bold 18px Arial, sans-serif';
+            this.ctx.font = 'bold 20px Arial, sans-serif';
             this.ctx.fillText('CLICK TO RETRY', this.canvas.width / 2, this.canvas.height / 2 + 30);
             
             // Smaller instruction
-            this.ctx.fillStyle = '#CCCCCC';
-            this.ctx.font = '14px Arial, sans-serif';
-            this.ctx.fillText('Tap anywhere on screen', this.canvas.width / 2, this.canvas.height / 2 + 60);
-            
-            // Score display with bouncing animation
-            const scoreScale = 1 + Math.sin(this.frame * 0.15) * 0.1;
-            this.ctx.save();
-            this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2 - 20);
-            this.ctx.scale(scoreScale, scoreScale);
-            this.ctx.fillStyle = '#FFFF44';
-            this.ctx.font = '18px "Press Start 2P"';
-            this.ctx.fillText(`SCORE: ${this.score}`, 0, 0);
-            this.ctx.restore();
-            
-            // High score display with special effects for new records
-            const highScore = localStorage.getItem('situpbird-highscore') || 0;
-            const isNewRecord = this.isNewHighScore;
-            
-            if (isNewRecord) {
-                // New record celebration effect
-                this.ctx.shadowColor = '#44FF44';
-                this.ctx.shadowBlur = 15 + Math.sin(this.frame * 0.2) * 10;
-                this.ctx.fillStyle = '#44FF44';
-                this.ctx.font = 'bold 16px "Press Start 2P"';
-                this.ctx.fillText('NEW HIGH SCORE!', this.canvas.width / 2, this.canvas.height / 2 + 10);
-                this.ctx.shadowBlur = 0;
-            } else {
-                this.ctx.fillStyle = '#44FF44';
-                this.ctx.font = '14px "Press Start 2P"';
-                this.ctx.fillText(`HIGH SCORE: ${highScore}`, this.canvas.width / 2, this.canvas.height / 2 + 10);
-            }
-            
-            // Animated achievement message
-            let achievementText = '';
-            let achievementColor = '#FFFFFF';
-            if (this.score >= 50) {
-                achievementText = 'SITUP MASTER!';
-                achievementColor = '#44FF44';
-            } else if (this.score >= 25) {
-                achievementText = 'FITNESS CHAMPION!';
-                achievementColor = '#44FFFF';
-            } else if (this.score >= 10) {
-                achievementText = 'GOOD WORKOUT!';
-                achievementColor = '#FFAA44';
-            } else if (this.score >= 5) {
-                achievementText = 'KEEP GOING!';
-                achievementColor = '#AA44FF';
-            } else {
-                achievementText = 'NICE TRY!';
-                achievementColor = '#FFFFFF';
-            }
-            
-            if (achievementText) {
-                const textAlpha = Math.sin(this.frame * 0.08) * 0.3 + 0.7;
-                this.ctx.globalAlpha = textAlpha;
-                this.ctx.fillStyle = achievementColor;
-                this.ctx.font = '14px "Press Start 2P"';
-                this.ctx.fillText(achievementText, this.canvas.width / 2, this.canvas.height / 2 + 40);
-                this.ctx.globalAlpha = 1.0;
-            }
-            
-            // Animated restart instruction
-            const restartAlpha = Math.sin(this.frame * 0.12) * 0.4 + 0.6;
-            this.ctx.globalAlpha = restartAlpha;
-            this.ctx.fillStyle = '#CCCCCC';
-            this.ctx.font = '12px "Press Start 2P"';
-            this.ctx.fillText('Perform situp motion to restart!', this.canvas.width / 2, this.canvas.height / 2 + 80);
-            this.ctx.globalAlpha = 1.0;
+            this.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
+            this.ctx.font = '16px Arial, sans-serif';
+            this.ctx.fillText('Tap anywhere', this.canvas.width / 2, this.canvas.height / 2 + 70);
             
             // Game over screen complete - restart button included above
         } else if (this.gameState === 'playing') {
@@ -3075,6 +3012,8 @@ class ScreenManager {
         // Improved click/touch handling with better browser compatibility
         const handleCanvasInteraction = (e) => {
             try {
+                console.log('🖱️ Canvas interaction detected!', e.type, 'Game state:', this.gameEngine?.gameState);
+                
                 if (e.preventDefault) e.preventDefault();
                 if (e.stopPropagation) e.stopPropagation();
                 
@@ -3087,6 +3026,8 @@ class ScreenManager {
                         console.log('🐦 Flap from interaction');
                         this.gameEngine.flap();
                     }
+                } else {
+                    console.warn('⚠️ Game engine not available');
                 }
             } catch (error) {
                 console.error('Canvas interaction error:', error);
@@ -3110,6 +3051,8 @@ class ScreenManager {
             if (window.PointerEvent) {
                 canvas.addEventListener('pointerdown', handleCanvasInteraction, { passive: false });
             }
+            
+            console.log('✅ Canvas event listeners added successfully');
         } catch (error) {
             // Fallback for older browsers
             console.log('Using fallback event listeners for older browser');
