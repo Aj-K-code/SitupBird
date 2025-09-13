@@ -2980,7 +2980,7 @@ class ScreenManager {
         }
         
         // Send sensor data to game engine
-        console.log('🔍 Game engine check:', {
+        console.log("🔍 Game engine check:", {
             hasGameEngine: !!this.gameEngine,
             gameState: this.gameEngine?.gameState,
             currentScreen: this.currentScreen,
@@ -2988,24 +2988,31 @@ class ScreenManager {
             isCalibrated: sensorData.processed?.calibrated
         });
         
-        if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
-            console.log('🎮 Sending sensor data to game engine:', {
+        // Enhanced game engine validation with fallback for Windows Chrome
+        const gameEngine = this.gameEngine || window.screenManager?.gameEngine;
+        if (gameEngine && sensorData.processed && sensorData.processed.calibrated) {
+            console.log("🎮 Sending sensor data to game engine:", {
                 shouldFlap: sensorData.processed.shouldFlap,
                 position: sensorData.processed.normalizedPosition,
                 isDown: sensorData.processed.isDown
             });
             
             // Update game engine with sensor data for dynamic pipe positioning and physics
-            this.gameEngine.updateSensorData(sensorData);
+            gameEngine.updateSensorData(sensorData);
             
             // Position-based control - no flapping needed!
             // Bird position is controlled directly by sensor position
         } else {
-            console.log('⚠️ Not sending to game engine - missing requirements');
+            console.log("⚠️ Not sending to game engine - missing requirements");
+            // Additional debugging for Windows Chrome
+            console.log("🔍 Detailed game engine check:", {
+                screenManagerGameEngine: !!window.screenManager?.gameEngine,
+                gameEngineType: typeof this.gameEngine,
+                gameEngineConstructor: this.gameEngine?.constructor?.name,
+                windowGameEngine: !!window.gameEngine
+            });
         }
-    }
 
-    updateGameConnectionStatus(status) {
         const statusElement = document.getElementById('connection-status');
         
         // Remove existing animations
