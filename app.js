@@ -3278,12 +3278,19 @@ class ScreenManager {
         canvas.style.width = canvasWidth + 'px';
         canvas.style.height = canvasHeight + 'px';
         
-        // Safari and mobile optimizations
+        // Enhanced browser detection
+        const isWindows = navigator.platform.indexOf("Win") !== -1;
+        const isChrome = navigator.userAgent.indexOf("Chrome") !== -1;
+        
+        // Safari, mobile, and Windows Chrome optimizations
         if (isSafari || isMobile) {
-            canvas.style.webkitTransform = 'translateZ(0)';
-            canvas.style.transform = 'translateZ(0)';
-            canvas.style.webkitBackfaceVisibility = 'hidden';
-            canvas.style.backfaceVisibility = 'hidden';
+            canvas.style.webkitTransform = "translateZ(0)";
+            canvas.style.transform = "translateZ(0)";
+            canvas.style.webkitBackfaceVisibility = "hidden";
+            canvas.style.backfaceVisibility = "hidden";
+        } else if (isWindows && isChrome) {
+            canvas.style.willChange = "transform";
+            canvas.style.imageRendering = "-webkit-optimize-contrast";
         }
         
         // Canvas rendering setup with compatibility checks
@@ -3458,10 +3465,11 @@ class ScreenManager {
                 connectionStatus.textContent = 'SAFARI DETECTED';
                 connectionStatus.style.color = '#ffaa00';
                 // Add special Safari warning
-                connectionStatus.textContent += ' - CHECK CONSOLE FOR ERRORS';
-            } else if (isMobile) {
-                connectionStatus.textContent = 'MOBILE DETECTED';
-                connectionStatus.style.color = '#00aaff';
+                connectionStatus.textContent += " - CHECK CONSOLE FOR ERRORS";
+            } else if (isWindows && isChrome) {
+                connectionStatus.textContent = "WINDOWS CHROME DETECTED";
+                connectionStatus.style.color = "#4CAF50";
+                connectionStatus.textContent += " - OPTIMIZING FOR PERFORMANCE";
             } else {
                 connectionStatus.textContent = 'DESKTOP DETECTED';
                 connectionStatus.style.color = '#00ff00';
