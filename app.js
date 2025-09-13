@@ -2980,7 +2980,7 @@ class ScreenManager {
         }
         
         // Send sensor data to game engine
-        console.log("🔍 Game engine check:", {
+        console.log('🔍 Game engine check:', {
             hasGameEngine: !!this.gameEngine,
             gameState: this.gameEngine?.gameState,
             currentScreen: this.currentScreen,
@@ -2988,31 +2988,24 @@ class ScreenManager {
             isCalibrated: sensorData.processed?.calibrated
         });
         
-        // Enhanced game engine validation with fallback for Windows Chrome
-        const gameEngine = this.gameEngine || window.screenManager?.gameEngine;
-        if (gameEngine && sensorData.processed && sensorData.processed.calibrated) {
-            console.log("🎮 Sending sensor data to game engine:", {
+        if (this.gameEngine && sensorData.processed && sensorData.processed.calibrated) {
+            console.log('🎮 Sending sensor data to game engine:', {
                 shouldFlap: sensorData.processed.shouldFlap,
                 position: sensorData.processed.normalizedPosition,
                 isDown: sensorData.processed.isDown
             });
             
             // Update game engine with sensor data for dynamic pipe positioning and physics
-            gameEngine.updateSensorData(sensorData);
+            this.gameEngine.updateSensorData(sensorData);
             
             // Position-based control - no flapping needed!
             // Bird position is controlled directly by sensor position
         } else {
-            console.log("⚠️ Not sending to game engine - missing requirements");
-            // Additional debugging for Windows Chrome
-            console.log("🔍 Detailed game engine check:", {
-                screenManagerGameEngine: !!window.screenManager?.gameEngine,
-                gameEngineType: typeof this.gameEngine,
-                gameEngineConstructor: this.gameEngine?.constructor?.name,
-                windowGameEngine: !!window.gameEngine
-            });
+            console.log('⚠️ Not sending to game engine - missing requirements');
         }
+    }
 
+    updateGameConnectionStatus(status) {
         const statusElement = document.getElementById('connection-status');
         
         // Remove existing animations
@@ -3285,19 +3278,12 @@ class ScreenManager {
         canvas.style.width = canvasWidth + 'px';
         canvas.style.height = canvasHeight + 'px';
         
-        // Enhanced browser detection
-        const isWindows = navigator.platform.indexOf("Win") !== -1;
-        const isChrome = navigator.userAgent.indexOf("Chrome") !== -1;
-        
-        // Safari, mobile, and Windows Chrome optimizations
+        // Safari and mobile optimizations
         if (isSafari || isMobile) {
-            canvas.style.webkitTransform = "translateZ(0)";
-            canvas.style.transform = "translateZ(0)";
-            canvas.style.webkitBackfaceVisibility = "hidden";
-            canvas.style.backfaceVisibility = "hidden";
-        } else if (isWindows && isChrome) {
-            canvas.style.willChange = "transform";
-            canvas.style.imageRendering = "-webkit-optimize-contrast";
+            canvas.style.webkitTransform = 'translateZ(0)';
+            canvas.style.transform = 'translateZ(0)';
+            canvas.style.webkitBackfaceVisibility = 'hidden';
+            canvas.style.backfaceVisibility = 'hidden';
         }
         
         // Canvas rendering setup with compatibility checks
@@ -3472,11 +3458,10 @@ class ScreenManager {
                 connectionStatus.textContent = 'SAFARI DETECTED';
                 connectionStatus.style.color = '#ffaa00';
                 // Add special Safari warning
-                connectionStatus.textContent += " - CHECK CONSOLE FOR ERRORS";
-            } else if (isWindows && isChrome) {
-                connectionStatus.textContent = "WINDOWS CHROME DETECTED";
-                connectionStatus.style.color = "#4CAF50";
-                connectionStatus.textContent += " - OPTIMIZING FOR PERFORMANCE";
+                connectionStatus.textContent += ' - CHECK CONSOLE FOR ERRORS';
+            } else if (isMobile) {
+                connectionStatus.textContent = 'MOBILE DETECTED';
+                connectionStatus.style.color = '#00aaff';
             } else {
                 connectionStatus.textContent = 'DESKTOP DETECTED';
                 connectionStatus.style.color = '#00ff00';
