@@ -366,9 +366,6 @@ body {
   -webkit-context-menu: none;
   context-menu: none;
   
-  /* Touch interaction */
-  touch-action: none;
-  
   /* Performance optimization */
   will-change: transform;
 }

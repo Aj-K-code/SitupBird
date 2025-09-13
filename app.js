@@ -2096,69 +2096,11 @@ class GameEngine {
         // Render game over screen
         this.renderGameOverScreen();
         
-        // Ensure event listeners are still active for restart
-        // Re-attach event listeners to ensure restart functionality works
-        if (this.canvas) {
-            this.reattachCanvasEventListeners();
-        }
+        // Event listeners are already properly set up in initializeGameCanvas
+        // The handleCanvasInteraction function handles all game states including 'over'
     }
     
-    // Method to re-attach canvas event listeners for game over screen
-    reattachCanvasEventListeners() {
-        console.log('🔄 Re-attaching canvas event listeners for game over screen');
-        
-        // Get the canvas element
-        const canvas = document.getElementById('game-canvas');
-        if (!canvas) {
-            console.error('❌ Canvas element not found for re-attaching event listeners');
-            return;
-        }
-        
-        // Remove any existing listeners to avoid duplicates
-        const events = ['click', 'touchend', 'touchstart', 'mousedown', 'pointerdown'];
-        events.forEach(eventType => {
-            try {
-                // We can't remove anonymous functions, so we'll just add new ones
-                // The browser will handle duplicates appropriately
-            } catch (e) {
-                // Ignore errors
-            }
-        });
-        
-        // Re-add the event listeners for restart functionality
-        const restartHandler = (e) => {
-            try {
-                console.log('🔄 Restart handler triggered from game over screen');
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Make sure we're in the game over state
-                if (this.gameState === 'over') {
-                    console.log('🔁 Restarting game from game over screen');
-                    this.reset();
-                    this.start();
-                    
-                    // Visual feedback for restart
-                    if (canvas) {
-                        canvas.style.filter = 'brightness(1.2)';
-                        setTimeout(() => {
-                            canvas.style.filter = 'brightness(1)';
-                        }, 100);
-                    }
-                }
-            } catch (error) {
-                console.error('Canvas restart handler error:', error);
-            }
-            
-            return false;
-        };
-        
-        // Add event listeners specifically for restart
-        canvas.addEventListener('click', restartHandler, false);
-        canvas.addEventListener('touchend', restartHandler, false);
-        
-        console.log('✅ Canvas event listeners re-attached for restart functionality');
-    }
+    
     
     fallToDeath() {
         // Animation loop for the bird falling to death
